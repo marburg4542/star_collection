@@ -73,18 +73,24 @@ export function Segmented({ value, onChange, options, className = '' }) {
 /** หน้าต่างเลื่อนขึ้นจากด้านล่าง (มือถือ) / กลางจอ (จอใหญ่) */
 export function Sheet({ open, onClose, title, children, footer }) {
   const panel = useRef(null);
+  // เก็บ onClose ล่าสุดไว้ใน ref — ถ้าใส่ไว้ใน dependency ของ effect ด้านล่าง ผู้เรียกที่ส่งฟังก์ชันใหม่ทุก render
+  // จะทำให้ effect รันทุกครั้งที่พิมพ์ แล้ว focus ย้ายไปที่กล่อง → พิมพ์ได้ทีละตัว
+  const closeRef = useRef(onClose);
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
   useEffect(() => {
     if (!open) return;
-    const onKey = (e) => e.key === 'Escape' && onClose?.();
+    const onKey = (e) => e.key === 'Escape' && closeRef.current?.();
     document.addEventListener('keydown', onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    panel.current?.focus();
+    panel.current?.focus(); // ครั้งเดียวตอนเปิด
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = prev;
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   return createPortal(
