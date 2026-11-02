@@ -1,0 +1,4 @@
+* text=auto
+# สคริปต์ที่รันบน Pi ต้องเป็น LF เสมอ (CRLF ทำให้ bash พัง)
+*.sh text eol=lf
+*.png binary

@@ -1,0 +1,30 @@
+{
+  "name": "star-collection",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "server": "npm --prefix server start",
+    "dev:all": "concurrently -n api,web -c yellow,cyan \"npm run server\" \"npm run dev\"",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "npm --prefix server test",
+    "icons": "node tools/make-icons.mjs"
+  },
+  "dependencies": {
+    "@fontsource/mali": "^5.3.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-hot-toast": "^2.6.1",
+    "react-router-dom": "^7.18.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^4.7.0",
+    "concurrently": "^9.2.5",
+    "sharp": "^0.34.5",
+    "tailwindcss": "^4.3.3",
+    "vite": "^6.4.5"
+  }
+}
