@@ -138,11 +138,11 @@ export function Sheet({ open, onClose, title, children, footer }) {
   );
 }
 
-export function Stepper({ value, onChange, min = 1, max = 1000 }) {
+export function Stepper({ value, onChange, min = 1, max = 1000, step = 1 }) {
   const set = (v) => onChange(Math.min(max, Math.max(min, v)));
   return (
     <div className="flex items-center gap-3">
-      <button type="button" className="btn btn-soft size-12 !p-0 text-2xl" onClick={() => set(value - 1)} disabled={value <= min} aria-label="ลด">
+      <button type="button" className="btn btn-soft size-12 !p-0 text-2xl" onClick={() => set(value - step)} disabled={value <= min} aria-label="ลด">
         −
       </button>
       <input
@@ -155,7 +155,7 @@ export function Stepper({ value, onChange, min = 1, max = 1000 }) {
         }}
         aria-label="จำนวน"
       />
-      <button type="button" className="btn btn-soft size-12 !p-0 text-2xl" onClick={() => set(value + 1)} disabled={value >= max} aria-label="เพิ่ม">
+      <button type="button" className="btn btn-soft size-12 !p-0 text-2xl" onClick={() => set(value + step)} disabled={value >= max} aria-label="เพิ่ม">
         +
       </button>
     </div>

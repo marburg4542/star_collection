@@ -11,6 +11,7 @@ import Give from './pages/parent/Give.jsx';
 import Requests from './pages/parent/Requests.jsx';
 import History from './pages/parent/History.jsx';
 import Manage from './pages/parent/Manage.jsx';
+import Phones from './pages/parent/Phones.jsx';
 
 export default function App() {
   return (
@@ -57,6 +58,7 @@ function Screens() {
         <Route path="/parent" element={<ParentLayout />}>
           <Route index element={<Give />} />
           <Route path="requests" element={<Requests />} />
+          <Route path="phones" element={<Phones />} />
           <Route path="history" element={<History />} />
           <Route path="manage" element={<Manage />} />
         </Route>

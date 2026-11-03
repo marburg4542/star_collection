@@ -10,7 +10,6 @@ import {
   forgetDevice,
   guessLimiter,
   hashSecret,
-  isValidPin,
   issueDevice,
   issueParentToken,
   normalizeFamilyCode,
@@ -19,6 +18,8 @@ import {
 } from './auth.js';
 import { broadcast, eventsHandler } from './events.js';
 import { createPush } from './push.js';
+import { createScreen } from './screen.js';
+import { HttpError, bad, emoji, familyCode, oneOf, optionalText, pin, text, wholeNumber } from './validate.js';
 
 export const KID_COLORS = ['pink', 'sky', 'mint', 'lemon', 'lavender', 'peach'];
 export const SEVERITIES = ['light', 'medium', 'severe'];
@@ -27,51 +28,6 @@ const MAX_PENDING_PER_KID = 10;
 
 // บริการแจ้งเตือนของเบราว์เซอร์ที่ยอมส่งไปหา — กันไม่ให้ใครใช้เซิร์ฟเวอร์ยิงคำขอไปที่อื่นในบ้าน
 const PUSH_HOSTS = ['fcm.googleapis.com', 'updates.push.services.mozilla.com', '.push.apple.com', '.notify.windows.com'];
-
-class HttpError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
-const bad = (message) => new HttpError(400, message);
-
-function text(value, label, max = 60) {
-  const s = String(value ?? '').trim();
-  if (!s) throw bad(`กรุณาใส่${label}`);
-  if (s.length > max) throw bad(`${label}ยาวเกิน ${max} ตัวอักษร`);
-  return s;
-}
-function optionalText(value, max = 120) {
-  const s = String(value ?? '').trim();
-  if (s.length > max) throw bad(`ข้อความยาวเกิน ${max} ตัวอักษร`);
-  return s || null;
-}
-function emoji(value, fallback) {
-  const s = String(value ?? '').trim();
-  if (!s) return fallback;
-  if ([...s].length > 8) throw bad('อีโมจิยาวเกินไป');
-  return s;
-}
-function wholeNumber(value, label, max) {
-  const n = Number(value);
-  if (!Number.isInteger(n) || n < 1 || n > max) throw bad(`${label}ต้องเป็นเลข 1–${max.toLocaleString('en-US')}`);
-  return n;
-}
-function oneOf(value, list, label) {
-  if (!list.includes(value)) throw bad(`${label}ไม่ถูกต้อง`);
-  return value;
-}
-function familyCode(value) {
-  const code = normalizeFamilyCode(value);
-  if (code.length < 6) throw bad('รหัสครอบครัวต้องยาวอย่างน้อย 6 ตัวอักษร');
-  if (code.length > 40) throw bad('รหัสครอบครัวยาวเกิน 40 ตัวอักษร');
-  return code;
-}
-function pin(value) {
-  if (!isValidPin(value)) throw bad('PIN ต้องเป็นตัวเลข 4 หลัก');
-  return String(value);
-}
 
 export function createApp(db, { appUrl, distDir } = {}) {
   const app = express();
@@ -106,7 +62,7 @@ export function createApp(db, { appUrl, distDir } = {}) {
     reserved: db.prepare("SELECT COALESCE(SUM(cost), 0) AS v, COUNT(*) AS n FROM requests WHERE kid_id = ? AND status = 'pending'"),
     activities: db.prepare('SELECT id, kind, name, emoji, stars, severity FROM activities ORDER BY sort_order, id'),
     activity: db.prepare('SELECT * FROM activities WHERE id = ?'),
-    rewards: db.prepare('SELECT id, name, emoji, category, cost FROM rewards ORDER BY cost, sort_order, id'),
+    rewards: db.prepare('SELECT id, name, emoji, category, cost, minutes FROM rewards ORDER BY cost, sort_order, id'),
     reward: db.prepare('SELECT * FROM rewards WHERE id = ?'),
     requests: db.prepare(`
       SELECT id, kid_id AS kidId, reward_id AS rewardId, reward_name AS name, reward_emoji AS emoji, cost, status, note,
@@ -126,12 +82,47 @@ export function createApp(db, { appUrl, distDir } = {}) {
   const mustReward = (id) => q.reward.get(Number(id)) ?? (() => { throw new HttpError(404, 'ไม่พบของรางวัลนี้'); })();
   const changed = (what) => broadcast({ type: 'change', what });
 
+  function kidStars(kidId) {
+    const balance = q.balance.get(kidId).v;
+    return { balance, available: balance - q.reserved.get(kidId).v };
+  }
+
+  // คำขอแลกจากหน้าเว็บเด็ก และจากหน้าล็อคบนมือถือลูก — จองดาวไว้จนผู้ปกครองตัดสิน
+  function createRequest(kid, reward) {
+    const id = db.transaction(() => {
+      const balance = q.balance.get(kid.id).v;
+      const reserved = q.reserved.get(kid.id);
+      if (reserved.n >= MAX_PENDING_PER_KID) throw new HttpError(409, 'มีคำขอรออนุมัติเยอะแล้ว รอผู้ปกครองก่อนนะ');
+      const available = balance - reserved.v;
+      if (available < reward.cost) throw new HttpError(409, `ดาวยังไม่พอ ขาดอีก ${reward.cost - available} ดวง`);
+      const minutes = reward.category === 'screen' ? reward.minutes : null;
+      const { lastInsertRowid } = db
+        .prepare('INSERT INTO requests (kid_id, reward_id, reward_name, reward_emoji, cost, minutes) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(kid.id, reward.id, reward.name, reward.emoji, reward.cost, minutes);
+      return Number(lastInsertRowid);
+    })();
+    changed('requests');
+    push.notify(
+      { role: 'parent' },
+      {
+        title: `${kid.avatar} ${kid.name} ขอแลกรางวัล`,
+        body: `${reward.emoji} ${reward.name} · ${reward.cost} ดาว`,
+        url: '/parent/requests',
+        tag: `request-${id}`,
+      },
+    );
+    return id;
+  }
+
+  const screen = createScreen({ db, push, changed, mustKid, mustReward, kidStars, createRequest });
+
   function state() {
     return {
       kids: q.kids.all(),
       activities: q.activities.all(),
       rewards: q.rewards.all(),
       requests: q.requests.all(),
+      timeRequests: screen.pendingTimeRequests(),
       pushKey: push.publicKey,
     };
   }
@@ -188,30 +179,10 @@ export function createApp(db, { appUrl, distDir } = {}) {
   });
 
   app.post('/api/requests', device, (req, res) => {
-    const created = db.transaction(() => {
-      const kid = mustKid(req.body.kidId);
-      const reward = mustReward(req.body.rewardId);
-      const balance = q.balance.get(kid.id).v;
-      const reserved = q.reserved.get(kid.id);
-      if (reserved.n >= MAX_PENDING_PER_KID) throw new HttpError(409, 'มีคำขอรออนุมัติเยอะแล้ว รอผู้ปกครองก่อนนะ');
-      const available = balance - reserved.v;
-      if (available < reward.cost) throw new HttpError(409, `ดาวยังไม่พอ ขาดอีก ${reward.cost - available} ดวง`);
-      const { lastInsertRowid } = db
-        .prepare('INSERT INTO requests (kid_id, reward_id, reward_name, reward_emoji, cost) VALUES (?, ?, ?, ?, ?)')
-        .run(kid.id, reward.id, reward.name, reward.emoji, reward.cost);
-      return { id: Number(lastInsertRowid), kid, reward };
-    })();
-    changed('requests');
-    push.notify(
-      { role: 'parent' },
-      {
-        title: `${created.kid.avatar} ${created.kid.name} ขอแลกรางวัล`,
-        body: `${created.reward.emoji} ${created.reward.name} · ${created.reward.cost} ดาว`,
-        url: '/parent/requests',
-        tag: `request-${created.id}`,
-      },
-    );
-    res.json({ id: created.id });
+    const kid = mustKid(req.body.kidId);
+    const id = createRequest(kid, mustReward(req.body.rewardId));
+    screen.pokeKid(kid.id); // ดาวที่ใช้ได้บนหน้าล็อคมือถือลดลง
+    res.json({ id });
   });
 
   app.post('/api/requests/:id/cancel', device, (req, res) => {
@@ -220,6 +191,7 @@ export function createApp(db, { appUrl, distDir } = {}) {
     if (r.status !== 'pending') throw new HttpError(409, 'คำขอนี้ไม่ได้รออนุมัติแล้ว');
     db.prepare("UPDATE requests SET status = 'cancelled', decided_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(r.id);
     changed('requests');
+    screen.pokeKid(r.kid_id);
     res.json({ ok: true });
   });
 
@@ -335,6 +307,7 @@ export function createApp(db, { appUrl, distDir } = {}) {
     )();
     changed('stars');
     for (const kid of kids) {
+      screen.pokeKid(kid.id); // ยอดดาวบนหน้าล็อคมือถือ
       push.notify(
         { role: 'kid', kidId: kid.id },
         entry.kind === 'earn'
@@ -354,6 +327,8 @@ export function createApp(db, { appUrl, distDir } = {}) {
       db.prepare("UPDATE transactions SET voided_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(tx.id);
       if (tx.request_id) db.prepare("UPDATE requests SET status = 'cancelled' WHERE id = ?").run(tx.request_id);
     })();
+    if (tx.request_id) screen.revokeForRequest(tx.request_id, tx.kid_id);
+    else screen.pokeKid(tx.kid_id);
     changed('stars');
     res.json({ ok: true });
   });
@@ -373,6 +348,7 @@ export function createApp(db, { appUrl, distDir } = {}) {
       activityId: null,
       requestId: request.id,
     });
+    screen.grantForRequest(request);
   }
 
   P.post('/requests/:id/approve', (req, res) => {
@@ -385,6 +361,7 @@ export function createApp(db, { appUrl, distDir } = {}) {
       return { request, kid };
     })();
     changed('requests');
+    screen.pokeKid(kid.id);
     push.notify(
       { role: 'kid', kidId: kid.id },
       { title: `🎉 ได้รับอนุมัติแล้ว!`, body: `${request.reward_emoji} ${request.reward_name} (ใช้ ${request.cost} ดาว)`, url: `/kid/${kid.id}`, tag: `request-${request.id}` },
@@ -399,6 +376,7 @@ export function createApp(db, { appUrl, distDir } = {}) {
     const note = optionalText(req.body.note);
     db.prepare("UPDATE requests SET status = 'rejected', note = ?, decided_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(note, request.id);
     changed('requests');
+    screen.pokeKid(request.kid_id);
     push.notify(
       { role: 'kid', kidId: request.kid_id },
       {
@@ -417,12 +395,13 @@ export function createApp(db, { appUrl, distDir } = {}) {
       const kid = mustKid(req.body.kidId);
       const reward = mustReward(req.body.rewardId);
       const { lastInsertRowid } = db
-        .prepare('INSERT INTO requests (kid_id, reward_id, reward_name, reward_emoji, cost) VALUES (?, ?, ?, ?, ?)')
-        .run(kid.id, reward.id, reward.name, reward.emoji, reward.cost);
+        .prepare('INSERT INTO requests (kid_id, reward_id, reward_name, reward_emoji, cost, minutes) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(kid.id, reward.id, reward.name, reward.emoji, reward.cost, reward.category === 'screen' ? reward.minutes : null);
       redeem(q.request.get(Number(lastInsertRowid)), kid);
       return kid;
     })();
     changed('requests');
+    screen.pokeKid(kid.id);
     res.json({ ok: true, kidId: kid.id });
   });
 
@@ -449,6 +428,7 @@ export function createApp(db, { appUrl, distDir } = {}) {
   });
   P.delete('/kids/:id', (req, res) => {
     const kid = mustKid(req.params.id);
+    screen.pokeKid(kid.id); // มือถือของเด็กคนนี้จะเห็นว่าหลุดการจับคู่
     db.transaction(() => {
       db.prepare("DELETE FROM push_subs WHERE role = 'kid' AND kid_id = ?").run(kid.id);
       db.prepare('DELETE FROM kids WHERE id = ?').run(kid.id);
@@ -489,30 +469,45 @@ export function createApp(db, { appUrl, distDir } = {}) {
     res.json({ ok: true });
   });
 
-  const rewardBody = (b) => ({
-    name: text(b.name, 'ชื่อของรางวัล'),
-    emoji: emoji(b.emoji, '🎁'),
-    category: oneOf(b.category, CATEGORIES, 'หมวด'),
-    cost: wholeNumber(b.cost, 'ราคา', 100000),
-  });
+  const rewardBody = (b) => {
+    const category = oneOf(b.category, CATEGORIES, 'หมวด');
+    return {
+      name: text(b.name, 'ชื่อของรางวัล'),
+      emoji: emoji(b.emoji, '🎁'),
+      category,
+      cost: wholeNumber(b.cost, 'ราคา', 100000),
+      // หมวดเล่นโทรศัพท์: อนุมัติแล้วมือถือลูกได้เวลาเพิ่มเท่านี้
+      minutes: category === 'screen' ? wholeNumber(b.minutes, 'จำนวนนาที', 1440) : null,
+    };
+  };
   P.post('/rewards', (req, res) => {
     const r = rewardBody(req.body);
     const { lastInsertRowid } = db
-      .prepare('INSERT INTO rewards (name, emoji, category, cost, sort_order) VALUES (?, ?, ?, ?, ?)')
-      .run(r.name, r.emoji, r.category, r.cost, q.nextOrder('rewards'));
+      .prepare('INSERT INTO rewards (name, emoji, category, cost, minutes, sort_order) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(r.name, r.emoji, r.category, r.cost, r.minutes, q.nextOrder('rewards'));
     changed('rewards');
+    screen.pokeAll();
     res.json({ id: Number(lastInsertRowid) });
   });
   P.put('/rewards/:id', (req, res) => {
     const existing = mustReward(req.params.id);
     const r = rewardBody(req.body);
-    db.prepare('UPDATE rewards SET name = ?, emoji = ?, category = ?, cost = ? WHERE id = ?').run(r.name, r.emoji, r.category, r.cost, existing.id);
+    db.prepare('UPDATE rewards SET name = ?, emoji = ?, category = ?, cost = ?, minutes = ? WHERE id = ?').run(
+      r.name,
+      r.emoji,
+      r.category,
+      r.cost,
+      r.minutes,
+      existing.id,
+    );
     changed('rewards');
+    screen.pokeAll();
     res.json({ ok: true });
   });
   P.delete('/rewards/:id', (req, res) => {
     db.prepare('DELETE FROM rewards WHERE id = ?').run(Number(req.params.id));
     changed('rewards');
+    screen.pokeAll();
     res.json({ ok: true });
   });
 
@@ -522,6 +517,7 @@ export function createApp(db, { appUrl, distDir } = {}) {
       throw bad('PIN เดิมไม่ถูกต้อง');
     }
     setSetting(db, 'pin_hash', hashSecret(pin(req.body.newPin)));
+    screen.pokeAll(); // มือถือลูกใช้ PIN นี้ปลดล็อคตอนไม่มีเน็ต ต้องได้ของใหม่
     res.json({ ok: true });
   });
 
@@ -538,7 +534,9 @@ export function createApp(db, { appUrl, distDir } = {}) {
     res.json({ ok: true });
   });
 
+  screen.mountParent(P);
   app.use('/api/parent', P);
+  app.use('/api/phone', screen.phoneRouter);
   app.use('/api', (req, res) => res.status(404).json({ error: 'not-found', message: 'ไม่พบ API นี้' }));
 
   // ---------- ไฟล์หน้าเว็บ (production) ----------

@@ -17,7 +17,7 @@ export default function Home() {
   const [board, setBoard] = useLocalState('board', 'total');
   const next = location.state?.next;
   const kids = data.kids;
-  const pending = data.requests.filter((r) => r.status === 'pending').length;
+  const pending = data.requests.filter((r) => r.status === 'pending').length + (data.timeRequests?.length ?? 0);
 
   const openParent = () => (isParent ? navigate('/parent') : setPinOpen(true));
   const closePin = useCallback(() => {

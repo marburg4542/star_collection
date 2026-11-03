@@ -5,6 +5,7 @@ import { api } from '../../lib/api.js';
 import { useStore } from '../../lib/store.jsx';
 import { usePush } from '../../lib/push.js';
 import { AVATARS, CATEGORIES, EARN_EMOJIS, KID_COLORS, PENALTY_EMOJIS, REWARD_EMOJIS, SEVERITY } from '../../lib/constants.js';
+import { duration } from '../../lib/format.js';
 import { Avatar, EmojiPicker, Segmented, Sheet, StarCount, Stepper } from '../../components/ui.jsx';
 import { Confirm } from '../../components/Feedback.jsx';
 
@@ -335,7 +336,7 @@ function RewardsTab() {
               onClick={() => setEditing(r)}
               left={<span className="w-9 text-center text-2xl">{r.emoji}</span>}
               title={r.name}
-              sub={CATEGORIES[r.category]?.label}
+              sub={`${CATEGORIES[r.category]?.label}${r.minutes ? ` · 📱 +${duration(r.minutes * 60)}` : ''}`}
               right={<StarCount value={r.cost} size={18} />}
             />
           ))}
@@ -353,6 +354,7 @@ function RewardEditor({ reward, onClose }) {
   const [emoji, setEmoji] = useState('🎁');
   const [category, setCategory] = useState('snack');
   const [cost, setCost] = useState(5);
+  const [minutes, setMinutes] = useState(30);
 
   useEffect(() => {
     if (!reward) return;
@@ -360,6 +362,7 @@ function RewardEditor({ reward, onClose }) {
     setEmoji(reward.emoji ?? '🎁');
     setCategory(reward.category ?? 'snack');
     setCost(reward.cost ?? 5);
+    setMinutes(reward.minutes ?? 30);
   }, [reward]);
 
   return (
@@ -368,7 +371,7 @@ function RewardEditor({ reward, onClose }) {
       title={isNew ? 'เพิ่มของรางวัล' : 'แก้ไขของรางวัล'}
       onClose={onClose}
       onSave={async () => {
-        const body = { name, emoji, category, cost };
+        const body = { name, emoji, category, cost, minutes: category === 'screen' ? minutes : undefined };
         if (isNew) await api.post('/api/parent/rewards', body);
         else await api.put(`/api/parent/rewards/${reward.id}`, body);
         toast.success('บันทึกแล้ว');
@@ -398,6 +401,13 @@ function RewardEditor({ reward, onClose }) {
           ))}
         </div>
       </div>
+      {category === 'screen' && (
+        <div>
+          <span className="label">ได้เวลาเล่นมือถือเพิ่มกี่นาที</span>
+          <Stepper value={minutes} onChange={setMinutes} min={5} max={1440} step={5} />
+          <p className="mt-1.5 text-sm text-mute">อนุมัติแล้วมือถือของลูกได้เวลาเพิ่ม {duration(minutes * 60)} ทันที (เฉพาะวันนั้น)</p>
+        </div>
+      )}
       <div>
         <span className="label">ใช้กี่ดาว</span>
         <Stepper value={cost} onChange={setCost} max={100000} />

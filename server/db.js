@@ -97,7 +97,104 @@ const MIGRATIONS = [
     const addReward = db.prepare('INSERT INTO rewards (name, emoji, category, cost, sort_order) VALUES (?, ?, ?, ?, ?)');
     SEED_REWARDS.forEach((r, i) => addReward.run(r.name, r.emoji, r.category, r.cost, i));
   },
+
+  // มือถือของลูก (แอปล็อคจอ Device Owner) + เวลาเล่น
+  (db) => {
+    db.exec(`
+      -- รางวัลหมวดเล่นโทรศัพท์: อนุมัติแล้วเครื่องลูกได้เวลาเพิ่มกี่นาที (คำขอเก็บสำเนาไว้เหมือนชื่อ/ราคา)
+      ALTER TABLE rewards ADD COLUMN minutes INTEGER;
+      ALTER TABLE requests ADD COLUMN minutes INTEGER;
+
+      -- เครื่องที่จับคู่แล้ว: token เก็บแค่ hash · locked = ผู้ปกครองสั่งล็อค · releasing = สั่งปลดการควบคุม รอเครื่องยืนยัน
+      CREATE TABLE phones (
+        id INTEGER PRIMARY KEY,
+        kid_id INTEGER NOT NULL REFERENCES kids(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        locked INTEGER NOT NULL DEFAULT 0,
+        lock_changed_at TEXT,
+        releasing INTEGER NOT NULL DEFAULT 0,
+        report TEXT,
+        apps TEXT,
+        created_at TEXT NOT NULL DEFAULT ${NOW},
+        last_seen_at TEXT
+      );
+
+      -- กติกาต่อเด็กหนึ่งคน (JSON) ใช้กับทุกเครื่องของเด็กคนนั้น · paused_until = ปิดกติกาชั่วคราว
+      CREATE TABLE screen_rules (
+        kid_id INTEGER PRIMARY KEY REFERENCES kids(id) ON DELETE CASCADE,
+        rules TEXT NOT NULL,
+        paused_until TEXT
+      );
+
+      -- เวลาที่ใช้ไปต่อเครื่องต่อวัน (วันตามเวลาไทย YYYY-MM-DD) — เครื่องรายงานยอดสะสมของวันมาเรื่อยๆ
+      CREATE TABLE screen_usage (
+        phone_id INTEGER NOT NULL REFERENCES phones(id) ON DELETE CASCADE,
+        day TEXT NOT NULL,
+        used_sec INTEGER NOT NULL,
+        PRIMARY KEY (phone_id, day)
+      );
+
+      -- เวลาพิเศษของวันนั้น: จากแลกดาว / ผู้ปกครองให้ / ใส่ PIN บนเครื่อง / อนุมัติคำขอเวลา
+      -- client_id กันเครื่องส่งรายการเดิมซ้ำตอนเน็ตกลับมา
+      CREATE TABLE screen_grants (
+        id INTEGER PRIMARY KEY,
+        kid_id INTEGER NOT NULL REFERENCES kids(id) ON DELETE CASCADE,
+        day TEXT NOT NULL,
+        minutes INTEGER NOT NULL,
+        source TEXT NOT NULL CHECK (source IN ('reward','parent','phone','request')),
+        request_id INTEGER REFERENCES requests(id) ON DELETE SET NULL,
+        client_id TEXT UNIQUE,
+        created_at TEXT NOT NULL DEFAULT ${NOW}
+      );
+      CREATE INDEX screen_grants_kid_day ON screen_grants(kid_id, day);
+
+      -- เด็กกดขอเวลาเพิ่มจากเครื่อง (ไม่ใช้ดาว) รอผู้ปกครองตอบ
+      CREATE TABLE time_requests (
+        id INTEGER PRIMARY KEY,
+        kid_id INTEGER NOT NULL REFERENCES kids(id) ON DELETE CASCADE,
+        phone_id INTEGER REFERENCES phones(id) ON DELETE SET NULL,
+        minutes INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','cancelled')),
+        created_at TEXT NOT NULL DEFAULT ${NOW},
+        decided_at TEXT
+      );
+    `);
+
+    // ของรางวัลหมวดเล่นโทรศัพท์ที่มีอยู่แล้ว (รวมตัวอย่าง) — อ่านจำนวนนาทีจากชื่อ เช่น "30 นาที", "1 ชั่วโมง"
+    const setMinutes = db.prepare('UPDATE rewards SET minutes = ? WHERE id = ?');
+    for (const r of db.prepare("SELECT id, name FROM rewards WHERE category = 'screen'").all()) {
+      const minutes = minutesFromName(r.name);
+      if (minutes) setMinutes.run(minutes, r.id);
+    }
+  },
+
+  // รายงานเวลาใช้งานรายแอป + ตำแหน่งล่าสุดของมือถือลูก
+  (db) => {
+    db.exec(`
+      -- เวลาที่แต่ละแอปอยู่หน้าจอ ต่อเครื่องต่อวัน (เก็บย้อนหลัง 30 วัน)
+      CREATE TABLE app_usage (
+        phone_id INTEGER NOT NULL REFERENCES phones(id) ON DELETE CASCADE,
+        day TEXT NOT NULL,
+        pkg TEXT NOT NULL,
+        label TEXT NOT NULL,
+        used_sec INTEGER NOT NULL,
+        PRIMARY KEY (phone_id, day, pkg)
+      );
+
+      -- ตำแหน่งล่าสุดเท่านั้น (JSON lat/lng/accuracy/at) ไม่เก็บประวัติ · locate_requested_at = ผู้ปกครองกดขอตำแหน่งตอนนี้
+      ALTER TABLE phones ADD COLUMN location TEXT;
+      ALTER TABLE phones ADD COLUMN locate_requested_at TEXT;
+    `);
+  },
 ];
+
+export function minutesFromName(name) {
+  const hours = /(\d+(?:\.\d+)?)\s*ชั่วโมง|(\d+(?:\.\d+)?)\s*ชม/.exec(name);
+  const mins = /(\d+)\s*นาที/.exec(name);
+  const total = (hours ? Number(hours[1] ?? hours[2]) * 60 : 0) + (mins ? Number(mins[1]) : 0);
+  return total > 0 && total <= 1440 ? Math.round(total) : null;
+}
 
 export function openDb(file) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });

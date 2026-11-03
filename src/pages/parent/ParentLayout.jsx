@@ -8,6 +8,7 @@ import { ModeSwitch } from '../../components/ModeSwitch.jsx';
 const TABS = [
   { to: '/parent', icon: '⭐', label: 'ให้/หักดาว', end: true },
   { to: '/parent/requests', icon: '🎁', label: 'คำขอแลก' },
+  { to: '/parent/phones', icon: '📱', label: 'มือถือ' },
   { to: '/parent/history', icon: '📜', label: 'ประวัติ' },
   { to: '/parent/manage', icon: '⚙️', label: 'ตั้งค่า' },
 ];
@@ -27,6 +28,7 @@ export default function ParentLayout() {
 
   if (!isParent) return locking.current ? null : <Navigate to="/" replace state={{ askPin: true, next: location.pathname + location.search }} />;
   const pending = data.requests.filter((r) => r.status === 'pending').length;
+  const badges = { '/parent/requests': pending, '/parent/phones': data.timeRequests?.length ?? 0 };
 
   // ไปหน้าแรกก่อนแล้วค่อยออกจากโหมด — ถ้าออกก่อน หน้านี้จะเห็นว่า "ไม่ใช่ผู้ปกครอง" แล้วเด้งแป้น PIN ขึ้นมา
   const toKid = () => {
@@ -50,7 +52,7 @@ export default function ParentLayout() {
         <Outlet />
       </main>
       <nav className="pad-bottom fixed inset-x-0 bottom-0 z-30 border-t border-hair bg-card/95 backdrop-blur-md" aria-label="เมนูผู้ปกครอง">
-        <div className="mx-auto grid max-w-md grid-cols-4">
+        <div className="mx-auto grid max-w-md grid-cols-5">
           {TABS.map((t) => (
             <NavLink
               key={t.to}
@@ -62,8 +64,8 @@ export default function ParentLayout() {
                 <>
                   <span className={`text-2xl transition-transform ${isActive ? 'scale-110' : 'opacity-70 grayscale-[50%]'}`}>{t.icon}</span>
                   <span className="text-xs font-semibold">{t.label}</span>
-                  {t.to === '/parent/requests' && pending > 0 && (
-                    <span className="absolute right-[22%] top-1 grid h-5 min-w-5 place-items-center rounded-full bg-bad px-1 text-[11px] font-bold text-white">{pending}</span>
+                  {badges[t.to] > 0 && (
+                    <span className="absolute right-[18%] top-1 grid h-5 min-w-5 place-items-center rounded-full bg-bad px-1 text-[11px] font-bold text-white">{badges[t.to]}</span>
                   )}
                 </>
               )}
