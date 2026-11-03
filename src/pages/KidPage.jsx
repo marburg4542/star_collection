@@ -50,22 +50,22 @@ export default function KidPage() {
 
       <section
         className="card relative mt-2 overflow-hidden px-5 pb-5 pt-6 text-center"
-        style={{ background: `radial-gradient(120% 90% at 50% 0%, ${color}40, transparent 65%), var(--color-night-800)` }}
+        style={{ background: `radial-gradient(120% 90% at 50% 0%, ${color}40, transparent 65%), var(--color-card)` }}
       >
         <Avatar kid={kid} size={96} ring className="mx-auto" />
         <h1 className="mt-3 text-2xl font-bold">{kid.name}</h1>
-        <p className={`mt-2 flex items-center justify-center gap-2 text-6xl font-bold tabular ${kid.balance < 0 ? 'text-bad' : 'text-gold-300'}`}>
+        <p className={`mt-2 flex items-center justify-center gap-2 text-6xl font-bold tabular ${kid.balance < 0 ? 'text-bad' : 'text-ink'}`}>
           <Star size={52} dim={kid.balance < 0} className={kid.balance >= 0 ? 'animate-twinkle' : ''} />
           {kid.balance < 0 ? `−${Math.abs(kid.balance)}` : kid.balance}
         </p>
         <p className="mt-1 text-mute">ดาวที่มีตอนนี้</p>
-        {kid.balance < 0 && <p className="mt-3 rounded-2xl bg-bad/15 px-4 py-2 text-[15px] text-[#ffc2cc]">ดาวติดลบอยู่ ทำดีเก็บดาวคืนกันนะ 💪</p>}
+        {kid.balance < 0 && <p className="mt-3 rounded-2xl bg-bad-soft px-4 py-2 text-[15px] text-bad">ดาวติดลบอยู่ ทำดีเก็บดาวคืนกันนะ 💪</p>}
         <div className="mt-4 flex justify-center gap-2 text-sm">
-          <span className="rounded-full bg-night-950/60 px-3 py-1">
+          <span className="rounded-full bg-sunken px-3 py-1">
             🏆 สะสมทั้งหมด <b className="tabular">{signed(kid.total).replace('+', '')}</b>
           </span>
           {kid.reserved > 0 && (
-            <span className="rounded-full bg-night-950/60 px-3 py-1">
+            <span className="rounded-full bg-sunken px-3 py-1">
               ⏳ รอแลก <b className="tabular">{kid.reserved}</b>
             </span>
           )}
@@ -130,7 +130,7 @@ function RequestStatus({ requests }) {
           <span className="text-3xl">{r.emoji}</span>
           <div className="min-w-0 flex-1">
             <p className="truncate font-bold">{r.name}</p>
-            <p className="text-sm text-gold-300">⏳ รอผู้ปกครองอนุมัติ · {r.cost} ดาว</p>
+            <p className="text-sm text-purple-600">⏳ รอผู้ปกครองอนุมัติ · {r.cost} ดาว</p>
           </div>
           <button className="btn btn-ghost min-h-10 px-3 text-sm" onClick={() => cancel(r)}>
             ยกเลิก
@@ -138,7 +138,7 @@ function RequestStatus({ requests }) {
         </div>
       ))}
       {decided.map((r) => (
-        <div key={r.id} className={`flex items-center gap-3 rounded-2xl px-4 py-3 ${r.status === 'approved' ? 'bg-good/12' : 'bg-night-800/70'}`}>
+        <div key={r.id} className={`flex items-center gap-3 rounded-2xl px-4 py-3 ${r.status === 'approved' ? 'bg-good-soft' : 'bg-sunken'}`}>
           <span className="text-3xl">{r.emoji}</span>
           <div className="min-w-0 flex-1">
             <p className="truncate font-bold">{r.name}</p>
@@ -184,7 +184,7 @@ function Rewards({ kid, rewards, available }) {
               role="tab"
               aria-selected={cat === value}
               onClick={() => setCat(value)}
-              className={`flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-[15px] font-semibold ${cat === value ? 'bg-gold-400 text-[#3a2600]' : 'bg-night-800 text-mute'}`}
+              className={`flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-[15px] font-semibold ${cat === value ? 'bg-purple-600 text-white' : 'chip-off'}`}
             >
               <span className="text-lg">{emoji}</span>
               {label}
@@ -201,18 +201,18 @@ function Rewards({ kid, rewards, available }) {
             <button
               key={r.id}
               onClick={() => (can ? setAsking(r) : toast(`ยังขาดอีก ${need} ดาว สู้ๆ! 💪`, { icon: '⭐' }))}
-              className={`card flex flex-col items-center gap-1.5 px-3 pb-3 pt-4 text-center transition-transform active:scale-95 ${can ? 'border-gold-400/70 shadow-[0_0_24px_-8px_#ffd04d]' : ''}`}
+              className={`card flex flex-col items-center gap-1.5 px-3 pb-3 pt-4 text-center transition-transform active:scale-95 ${can ? 'border-pink-500 bg-pink-50' : ''}`}
             >
               <span className={`text-5xl ${can ? '' : 'opacity-60 grayscale-[35%]'}`}>{r.emoji}</span>
               <span className="line-clamp-2 min-h-[2.7em] text-[15px] font-semibold leading-snug">{r.name}</span>
-              <span className="rounded-full bg-night-950/70 px-3 py-0.5">
+              <span className="rounded-full bg-sunken px-3 py-0.5">
                 <StarCount value={r.cost} size={16} />
               </span>
               {can ? (
-                <span className="mt-1 text-sm font-bold text-gold-300">แตะเพื่อขอแลก</span>
+                <span className="mt-1 text-sm font-bold text-purple-600">แตะเพื่อขอแลก</span>
               ) : (
                 <span className="mt-1 w-full">
-                  <span className="block h-2 overflow-hidden rounded-full bg-night-950">
+                  <span className="block h-2 overflow-hidden rounded-full bg-sunken">
                     <span className="block h-full rounded-full bg-gold-400" style={{ width: `${pct * 100}%` }} />
                   </span>
                   <span className="mt-1 block text-xs text-mute">อีก {need} ดาว</span>
@@ -232,7 +232,7 @@ function Rewards({ kid, rewards, available }) {
             <button className="btn btn-soft flex-1" onClick={() => setAsking(null)}>
               ยังก่อน
             </button>
-            <button className="btn btn-gold flex-[2] text-lg" onClick={ask} disabled={busy}>
+            <button className="btn btn-primary flex-[2] text-lg" onClick={ask} disabled={busy}>
               ขอแลกเลย 🙏
             </button>
           </div>
@@ -258,7 +258,7 @@ function PushBell({ kid, pushKey }) {
   if (!push.supported && !push.needsInstall) return null;
   return (
     <button
-      className={`btn min-h-11 px-4 text-[15px] ${push.on ? 'btn-soft text-gold-300' : 'btn-soft'}`}
+      className={`btn min-h-11 px-4 text-[15px] ${push.on ? 'btn-soft text-purple-600' : 'btn-soft'}`}
       disabled={push.busy}
       onClick={async () => {
         if (push.needsInstall) {

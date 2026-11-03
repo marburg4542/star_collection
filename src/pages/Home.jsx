@@ -4,9 +4,10 @@ import { api } from '../lib/api.js';
 import { useStore } from '../lib/store.jsx';
 import { useLocalState, local } from '../lib/local.js';
 import { isIos, isStandalone } from '../lib/push.js';
-import { Avatar, Empty, Segmented, Star, StarCount } from '../components/ui.jsx';
+import { Avatar, Empty, Logo, Segmented, StarCount } from '../components/ui.jsx';
 import { Podium } from '../components/Podium.jsx';
 import { PinPad } from '../components/PinPad.jsx';
+import { ModeSwitch } from '../components/ModeSwitch.jsx';
 
 export default function Home() {
   const { data, isParent, enterParent } = useStore();
@@ -40,24 +41,17 @@ export default function Home() {
 
   return (
     <main className="pad-top mx-auto max-w-md px-4 pb-12">
-      <header className="flex items-center justify-between gap-3 py-2">
-        <div className="flex items-center gap-2">
-          <Star size={36} className="animate-twinkle" />
-          <h1 className="text-[26px] font-bold">สะสมดาว</h1>
+      <header className="flex items-center justify-between gap-2 py-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Logo size={34} className="animate-twinkle" />
+          <h1 className="truncate text-2xl font-bold">สะสมดาว</h1>
         </div>
-        <button onClick={openParent} className="btn btn-soft relative min-h-11 px-4 text-[15px]">
-          🔒 ผู้ปกครอง
-          {pending > 0 && (
-            <span className="absolute -right-1 -top-1 grid h-6 min-w-6 place-items-center rounded-full bg-bad px-1.5 text-xs font-bold text-white" aria-label={`มีคำขอแลก ${pending} รายการ`}>
-              {pending}
-            </span>
-          )}
-        </button>
+        <ModeSwitch mode="kid" onParent={openParent} pending={pending} />
       </header>
 
       {kids.length === 0 ? (
         <Empty emoji="👶" title="ยังไม่มีรายชื่อเด็ก">
-          ผู้ปกครองกด 🔒 ผู้ปกครอง → ตั้งค่า → เด็กๆ เพื่อเพิ่มชื่อ
+          ผู้ปกครองสลับเป็น 🔒 ผู้ปกครอง → ตั้งค่า → เด็กๆ เพื่อเพิ่มชื่อ
         </Empty>
       ) : (
         <>
@@ -123,7 +117,7 @@ function InstallHint() {
         <p className="font-bold">ติดตั้งสะสมดาวไว้บนหน้าจอ</p>
         {prompt ? (
           <button
-            className="btn btn-gold mt-2 min-h-10 text-sm"
+            className="btn btn-primary mt-2 min-h-10 text-sm"
             onClick={async () => {
               prompt.prompt();
               await prompt.userChoice;

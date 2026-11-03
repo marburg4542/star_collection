@@ -1,17 +1,30 @@
 @import "tailwindcss";
 
+/* ธีมสว่างสไตล์โกธิกน่ารัก (โทนคุโรมิ): พื้นขาวม่วงอ่อน ชมพูหวาน เส้นขอบดำแบบสติกเกอร์ — ดาวยังเป็นสีทอง */
 @theme {
   --font-sans: "Mali", ui-rounded, system-ui, sans-serif;
 
-  /* ท้องฟ้ากลางคืน */
-  --color-night-950: #0a0c26;
-  --color-night-900: #11143a;
-  --color-night-800: #1a1e50;
-  --color-night-700: #252a68;
-  --color-night-600: #343b84;
-  --color-night-500: #4b53a8;
-  --color-ink: #f6f4ff;
-  --color-mute: #aab0e3;
+  /* พื้นผิว */
+  --color-paper: #fcf8ff; /* พื้นหลังหน้า */
+  --color-card: #ffffff; /* การ์ด/หน้าต่าง */
+  --color-sunken: #f4edfd; /* ช่องกรอก, ชิป, พื้นที่ยุบลง */
+  --color-soft: #ebe0fb; /* ปุ่มรอง */
+  --color-hair: #e7dcf7; /* เส้นแบ่งบางๆ */
+  --color-lilac: #c9b4ee; /* เส้นประ, ของที่ยังไม่ถึง */
+  --color-line: #2b2238; /* เส้นขอบดำแบบการ์ตูน */
+  --color-ink: #2b2238;
+  --color-mute: #75698a;
+
+  /* สีหลัก */
+  --color-purple-300: #cdb8f0;
+  --color-purple-500: #8b67c9;
+  --color-purple-600: #6f4db0;
+  --color-purple-700: #563a8f;
+  --color-pink-50: #fff3f9;
+  --color-pink-200: #ffd6ea;
+  --color-pink-300: #ffb1d6;
+  --color-pink-400: #ff8cc6;
+  --color-pink-500: #f45ba8;
 
   /* ดาว */
   --color-gold-200: #fff1c2;
@@ -20,12 +33,14 @@
   --color-gold-500: #ffbb1f;
   --color-gold-600: #e39b00;
 
-  /* ได้ / หัก และระดับความผิด */
-  --color-good: #5fe0a0;
-  --color-bad: #ff7088;
-  --color-light: #ffd166;
-  --color-medium: #ff9f5a;
-  --color-severe: #ff5d73;
+  /* ได้ / หัก และระดับความผิด (เข้มพอให้อ่านบนพื้นขาว) */
+  --color-good: #1e9466;
+  --color-good-soft: #e2f5ec; /* พื้นทึบ — ใช้บนลายพื้นหลังได้ ลายไม่ทะลุ */
+  --color-bad: #d93d63;
+  --color-bad-soft: #fde7ed;
+  --color-light: #c08600;
+  --color-medium: #dc6420;
+  --color-severe: #d7335a;
 
   /* สีประจำตัวเด็ก */
   --color-kid-pink: #ff8fbd;
@@ -55,8 +70,8 @@
     40%, 80% { transform: translateX(8px); }
   }
   @keyframes twinkle {
-    0%, 100% { opacity: 1; transform: scale(1) rotate(0deg); }
-    50% { opacity: 0.7; transform: scale(0.88) rotate(-8deg); }
+    0%, 100% { transform: scale(1) rotate(0deg); }
+    50% { transform: scale(0.9) rotate(-8deg); }
   }
   @keyframes float {
     0%, 100% { transform: translateY(0); }
@@ -66,37 +81,22 @@
 
 @layer base {
   html {
-    background: var(--color-night-900);
-    color-scheme: dark;
+    background: var(--color-paper);
+    color-scheme: light;
     -webkit-text-size-adjust: 100%;
   }
   body {
     min-height: 100dvh;
     color: var(--color-ink);
     font-family: var(--font-sans);
-    background:
-      radial-gradient(120% 55% at 50% -12%, #2e3496 0%, transparent 62%),
-      var(--color-night-900);
-    background-attachment: fixed;
+    background-color: var(--color-paper);
+    background-image:
+      radial-gradient(120% 45% at 50% -8%, #efe4ffcc 0%, transparent 70%),
+      url("./assets/pattern.svg");
+    background-size: auto, 220px 220px;
+    background-attachment: fixed, scroll;
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior-y: none;
-  }
-  /* ดาวจุดเล็กๆ บนท้องฟ้า */
-  body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
-    opacity: 0.55;
-    background-image:
-      radial-gradient(1.6px 1.6px at 24px 36px, #fff 50%, transparent 52%),
-      radial-gradient(1px 1px at 132px 84px, #fff 50%, transparent 52%),
-      radial-gradient(1.2px 1.2px at 210px 18px, #ffe9a8 50%, transparent 52%),
-      radial-gradient(1px 1px at 78px 168px, #fff 50%, transparent 52%),
-      radial-gradient(1.4px 1.4px at 182px 196px, #fff 50%, transparent 52%),
-      radial-gradient(1px 1px at 254px 132px, #cfd4ff 50%, transparent 52%);
-    background-size: 280px 240px;
   }
   #root {
     position: relative;
@@ -109,7 +109,7 @@
     cursor: default;
   }
   :focus-visible {
-    outline: 3px solid var(--color-gold-400);
+    outline: 3px solid var(--color-pink-500);
     outline-offset: 2px;
   }
   input,
@@ -120,10 +120,12 @@
 }
 
 @layer components {
+  /* การ์ดแบบสติกเกอร์: ขอบดำ + เงาแข็งด้านล่าง */
   .card {
     border-radius: 1.5rem;
-    background: color-mix(in oklab, var(--color-night-800) 88%, transparent);
-    border: 1px solid color-mix(in oklab, var(--color-night-500) 45%, transparent);
+    background: var(--color-card);
+    border: 2px solid var(--color-line);
+    box-shadow: 0 3px 0 var(--color-line);
   }
   .btn {
     display: inline-flex;
@@ -134,22 +136,26 @@
     padding: 0 1.25rem;
     border-radius: 999px;
     font-weight: 700;
-    transition: transform 0.12s ease, background-color 0.15s ease, opacity 0.15s ease;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.15s ease;
     user-select: none;
   }
   .btn:active:not(:disabled) {
-    transform: scale(0.96);
+    transform: translateY(2px);
   }
   .btn:disabled {
     opacity: 0.45;
   }
-  .btn-gold {
-    background: linear-gradient(180deg, var(--color-gold-300), var(--color-gold-500));
-    color: #3a2600;
-    box-shadow: 0 6px 0 -1px var(--color-gold-600), 0 10px 24px -8px #ffbb1f88;
+  .btn-primary {
+    background: linear-gradient(180deg, var(--color-pink-300), var(--color-pink-400));
+    color: var(--color-ink);
+    border: 2px solid var(--color-line);
+    box-shadow: 0 4px 0 var(--color-line);
+  }
+  .btn-primary:active:not(:disabled) {
+    box-shadow: 0 2px 0 var(--color-line);
   }
   .btn-soft {
-    background: var(--color-night-700);
+    background: var(--color-soft);
     color: var(--color-ink);
   }
   .btn-ghost {
@@ -157,24 +163,31 @@
     color: var(--color-mute);
   }
   .btn-danger {
-    background: color-mix(in oklab, var(--color-bad) 22%, var(--color-night-800));
-    color: #ffd3db;
+    background: #ffe3ea;
+    color: #a3203f;
+    border: 2px solid #a3203f;
+  }
+  /* ชิปที่ยังไม่ได้เลือก (ตัวที่เลือกใช้ bg-purple-600 text-white) */
+  .chip-off {
+    background: var(--color-card);
+    color: var(--color-ink);
+    box-shadow: inset 0 0 0 2px var(--color-hair);
   }
   .field {
     width: 100%;
     min-height: 3rem;
     padding: 0.6rem 1rem;
     border-radius: 1rem;
-    background: var(--color-night-950);
-    border: 1.5px solid var(--color-night-600);
+    background: var(--color-card);
+    border: 2px solid var(--color-lilac);
     color: var(--color-ink);
   }
   .field:focus {
     outline: none;
-    border-color: var(--color-gold-400);
+    border-color: var(--color-purple-500);
   }
   .field::placeholder {
-    color: color-mix(in oklab, var(--color-mute) 70%, transparent);
+    color: color-mix(in oklab, var(--color-mute) 75%, transparent);
   }
   .label {
     display: block;
@@ -199,11 +212,11 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
-  /* ดาวกระจายตอนฉลอง — ทิศทางมาจาก --dx/--dy ของแต่ละดวง */
+  /* ดาว/หัวใจกระจายตอนฉลอง — ทิศทางมาจาก --dx/--dy ของแต่ละดวง */
   .burst-star {
     position: absolute;
     left: 50%;
-    top: 3rem;
+    top: 4rem;
     pointer-events: none;
     animation: burst 1.2s cubic-bezier(0.2, 0.7, 0.3, 1) both;
   }

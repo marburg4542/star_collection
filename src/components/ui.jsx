@@ -6,18 +6,38 @@ import { num } from '../lib/format.js';
 
 const STAR_PATH = 'M12 2.8L14.7 9.08L21.51 9.71L16.37 14.22L17.88 20.89L12 17.4L6.12 20.89L7.63 14.22L2.49 9.71L9.3 9.08Z';
 
+// ย่อดาวลงนิดหน่อยให้เส้นขอบดำไม่ล้นกรอบ 24×24
+const STAR_FIT = 'translate(12 12.3) scale(0.88) translate(-12 -12.3)';
+
+/** ดาวสีทองขอบดำแบบสติกเกอร์ — dim = ดาวติดลบ/ยังไม่ถึง (สีม่วงหม่น) */
 export function Star({ size = 24, className = '', dim = false }) {
   const id = useId();
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={`inline-block shrink-0 ${className}`} aria-hidden="true">
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor={dim ? '#8a8fc4' : '#ffeaa0'} />
-          <stop offset="1" stopColor={dim ? '#5a5f99' : '#ffb21a'} />
+          <stop offset="0" stopColor={dim ? '#e4d9f5' : '#ffeaa0'} />
+          <stop offset="1" stopColor={dim ? '#bba8e0' : '#ffb21a'} />
         </linearGradient>
       </defs>
-      <path d={STAR_PATH} fill={`url(#${id})`} stroke={`url(#${id})`} strokeWidth="2" strokeLinejoin="round" />
+      <g transform={STAR_FIT}>
+        <path d={STAR_PATH} fill="none" stroke={dim ? '#8e80a8' : 'var(--color-line)'} strokeWidth="3.6" strokeLinejoin="round" />
+        <path d={STAR_PATH} fill={`url(#${id})`} stroke={`url(#${id})`} strokeWidth="1.2" strokeLinejoin="round" />
+      </g>
     </svg>
+  );
+}
+
+/** โลโก้แอป: ดาวทองติดโบว์ชมพู */
+export function Logo({ size = 36, className = '' }) {
+  return (
+    <span className={`relative inline-block shrink-0 ${className}`} style={{ width: size, height: size }} aria-hidden="true">
+      <Star size={size} />
+      <svg viewBox="-8 -5 16 10" width={size * 0.5} height={size * 0.31} className="absolute" style={{ left: size * 0.25, top: -size * 0.02, transform: 'rotate(-14deg)' }}>
+        <path d="M0 0L-6.5-4v8zM0 0l6.5-4v8z" fill="#ff8cc6" stroke="var(--color-line)" strokeWidth="1.3" strokeLinejoin="round" />
+        <circle r="1.9" fill="#f45ba8" stroke="var(--color-line)" strokeWidth="1.1" />
+      </svg>
+    </span>
   );
 }
 
@@ -40,8 +60,9 @@ export function Avatar({ kid, size = 56, ring = false, className = '' }) {
         width: size,
         height: size,
         fontSize: size * 0.56,
-        background: `radial-gradient(circle at 35% 30%, #ffffff66, transparent 60%), ${color}`,
-        boxShadow: ring ? `0 0 0 4px var(--color-night-900), 0 0 0 7px ${color}` : undefined,
+        background: `radial-gradient(circle at 35% 30%, #ffffff80, transparent 60%), ${color}`,
+        border: `${size >= 48 ? 2.5 : 2}px solid var(--color-line)`,
+        boxShadow: ring ? `0 0 0 4px var(--color-card), 0 0 0 6.5px var(--color-pink-400)` : undefined,
       }}
       aria-hidden="true"
     >
@@ -52,7 +73,7 @@ export function Avatar({ kid, size = 56, ring = false, className = '' }) {
 
 export function Segmented({ value, onChange, options, className = '' }) {
   return (
-    <div className={`flex rounded-full bg-night-950/70 p-1 ${className}`} role="tablist">
+    <div className={`flex rounded-full border-2 border-line bg-card p-1 ${className}`} role="tablist">
       {options.map((o) => (
         <button
           key={o.value}
@@ -60,7 +81,7 @@ export function Segmented({ value, onChange, options, className = '' }) {
           aria-selected={value === o.value}
           onClick={() => onChange(o.value)}
           className={`flex-1 rounded-full px-3 py-2 text-[15px] font-bold transition-colors ${
-            value === o.value ? 'bg-night-600 text-ink shadow' : 'text-mute'
+            value === o.value ? 'bg-purple-600 text-white' : 'text-mute'
           }`}
         >
           {o.label}
@@ -95,7 +116,7 @@ export function Sheet({ open, onClose, title, children, footer }) {
   if (!open) return null;
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="absolute inset-0 bg-night-950/75 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="absolute inset-0 bg-ink/45 backdrop-blur-[2px]" onClick={onClose} />
       <div
         ref={panel}
         tabIndex={-1}
@@ -104,13 +125,13 @@ export function Sheet({ open, onClose, title, children, footer }) {
         {title && (
           <div className="flex items-center justify-between gap-3 px-5 pt-5 pb-2">
             <h2 className="text-lg font-bold">{title}</h2>
-            <button onClick={onClose} className="grid size-9 place-items-center rounded-full bg-night-700 text-mute" aria-label="ปิด">
+            <button onClick={onClose} className="grid size-9 place-items-center rounded-full bg-soft text-mute" aria-label="ปิด">
               ✕
             </button>
           </div>
         )}
         <div className="overflow-y-auto px-5 pb-4">{children}</div>
-        {footer && <div className="pad-bottom border-t border-night-600/50 px-5 pt-3">{footer}</div>}
+        {footer && <div className="pad-bottom border-t border-hair px-5 pt-3">{footer}</div>}
       </div>
     </div>,
     document.body,
@@ -150,7 +171,7 @@ export function EmojiPicker({ value, onChange, choices }) {
             type="button"
             key={e}
             onClick={() => onChange(e)}
-            className={`grid aspect-square place-items-center rounded-xl text-2xl ${value === e ? 'bg-gold-400/25 ring-2 ring-gold-400' : 'bg-night-950/60'}`}
+            className={`grid aspect-square place-items-center rounded-xl text-2xl ${value === e ? 'bg-purple-300/40 ring-2 ring-purple-500' : 'bg-sunken'}`}
             aria-label={e}
             aria-pressed={value === e}
           >

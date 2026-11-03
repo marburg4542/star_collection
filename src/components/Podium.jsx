@@ -12,9 +12,9 @@ export function rankKids(kids, field) {
 }
 
 const MEDAL = {
-  1: { block: 'from-gold-300 to-gold-600', text: 'text-[#4a3000]', height: 'h-28', avatar: 76 },
-  2: { block: 'from-[#e8ecff] to-[#9aa3d9]', text: 'text-night-800', height: 'h-20', avatar: 62 },
-  3: { block: 'from-[#ffc59a] to-[#c9773f]', text: 'text-[#4a2408]', height: 'h-14', avatar: 56 },
+  1: { block: 'from-gold-300 to-gold-500', height: 'h-28', avatar: 76 },
+  2: { block: 'from-[#f1edfa] to-[#cbbfe6]', height: 'h-20', avatar: 62 },
+  3: { block: 'from-[#ffd3ea] to-[#ff9ccb]', height: 'h-14', avatar: 56 },
 };
 
 export function Podium({ kids, field }) {
@@ -37,15 +37,15 @@ export function Podium({ kids, field }) {
               </div>
               <span className="mb-1 max-w-full truncate text-center text-[15px] font-bold">{kid.name}</span>
               <StarCount value={score} size={18} className="mb-2 text-lg" />
-              <div className={`grid w-full place-items-center rounded-t-2xl bg-gradient-to-b ${m.block} ${m.height} shadow-[inset_0_-6px_0_#0003]`}>
-                <span className={`text-3xl font-bold ${m.text}`}>{rank}</span>
+              <div className={`grid w-full place-items-center rounded-t-2xl border-2 border-b-0 border-line bg-gradient-to-b ${m.block} ${m.height}`}>
+                <span className="text-3xl font-bold text-ink">{rank}</span>
               </div>
             </Link>
           );
         })}
       </div>
       {rest.length > 0 && (
-        <ol className="card mt-3 divide-y divide-night-600/40 rounded-2xl">
+        <ol className="card mt-3 divide-y divide-hair rounded-2xl">
           {rest.map(({ kid, score, rank }) => (
             <li key={kid.id}>
               <Link to={`/kid/${kid.id}`} className="flex items-center gap-3 px-4 py-2.5">

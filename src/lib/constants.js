@@ -10,9 +10,9 @@ export const KID_COLORS = {
 };
 
 export const SEVERITY = {
-  light: { label: 'เบา', hex: '#ffd166' },
-  medium: { label: 'ปานกลาง', hex: '#ff9f5a' },
-  severe: { label: 'ร้ายแรง', hex: '#ff5d73' },
+  light: { label: 'เบา', hex: '#c08600' },
+  medium: { label: 'ปานกลาง', hex: '#dc6420' },
+  severe: { label: 'ร้ายแรง', hex: '#d7335a' },
 };
 
 export const CATEGORIES = {

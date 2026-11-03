@@ -69,7 +69,7 @@ function FilterChip({ on, onClick, children }) {
       role="tab"
       aria-selected={on}
       onClick={onClick}
-      className={`flex shrink-0 items-center gap-1.5 rounded-full py-1.5 pl-2 pr-4 text-[15px] font-semibold ${on ? 'bg-gold-400 text-[#3a2600]' : 'bg-night-800 text-mute'}`}
+      className={`flex shrink-0 items-center gap-1.5 rounded-full py-1.5 pl-2 pr-4 text-[15px] font-semibold ${on ? 'bg-purple-600 text-white' : 'chip-off'}`}
     >
       {children}
     </button>

@@ -51,7 +51,7 @@ export function PinPad({ open, onClose, onSubmit, title = 'ใส่ PIN ผู�
           {[0, 1, 2, 3].map((i) => (
             <span
               key={i}
-              className={`size-4 rounded-full border-2 transition-colors ${i < pin.length ? 'border-gold-400 bg-gold-400' : 'border-night-500'}`}
+              className={`size-4 rounded-full border-2 transition-colors ${i < pin.length ? 'border-line bg-pink-400' : 'border-lilac'}`}
             />
           ))}
         </div>
@@ -79,7 +79,7 @@ function PadKey({ children, label, ...props }) {
   return (
     <button
       type="button"
-      className="grid aspect-square place-items-center rounded-full bg-night-700 text-3xl font-bold tabular transition-transform active:scale-90 active:bg-night-600"
+      className="grid aspect-square place-items-center rounded-full border-2 border-line bg-card text-3xl font-bold tabular shadow-[0_3px_0_var(--color-line)] transition-transform active:translate-y-0.5 active:bg-pink-200 active:shadow-none"
       aria-label={label}
       {...props}
     >

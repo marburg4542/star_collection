@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useStore } from '../lib/store.jsx';
-import { Star } from '../components/ui.jsx';
+import { Logo } from '../components/ui.jsx';
 
 /** ครั้งแรกที่เปิดแอปบนเซิร์ฟเวอร์ใหม่: ตั้งรหัสครอบครัว + PIN ผู้ปกครอง */
 export default function Setup() {
@@ -35,7 +35,7 @@ export default function Setup() {
   return (
     <main className="pad-top mx-auto max-w-md px-5 pb-10">
       <div className="py-8 text-center">
-        <Star size={72} className="mx-auto animate-twinkle" />
+        <Logo size={72} className="mx-auto animate-twinkle" />
         <p className="mt-3 text-lg text-mute">ยินดีต้อนรับสู่</p>
         <h1 className="text-4xl font-bold">สะสมดาว</h1>
         <p className="mt-2 text-mute">ตั้งค่าครั้งแรก ใช้เวลาไม่ถึงนาที</p>
@@ -63,8 +63,8 @@ export default function Setup() {
           </div>
         </div>
         <p className="-mt-2 text-sm text-mute">ตัวเลข 4 หลัก ใช้เข้าโหมดให้ดาว/หักดาว/อนุมัติ — อย่าบอกเด็กๆ นะ</p>
-        {error && <p className="rounded-xl bg-bad/15 px-3 py-2 text-sm text-bad">{error}</p>}
-        <button className="btn btn-gold w-full text-lg" disabled={busy}>
+        {error && <p className="rounded-xl bg-bad-soft px-3 py-2 text-sm text-bad">{error}</p>}
+        <button className="btn btn-primary w-full text-lg" disabled={busy}>
           เริ่มใช้งาน
         </button>
       </form>

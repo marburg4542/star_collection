@@ -19,9 +19,17 @@ export default function App() {
         position="top-center"
         containerStyle={{ top: 'max(env(safe-area-inset-top), 12px)' }}
         toastOptions={{
-          style: { background: '#252a68', color: '#f6f4ff', borderRadius: 16, fontFamily: 'inherit', fontWeight: 600 },
-          success: { iconTheme: { primary: '#5fe0a0', secondary: '#11143a' } },
-          error: { iconTheme: { primary: '#ff7088', secondary: '#11143a' } },
+          style: {
+            background: '#ffffff',
+            color: '#2b2238',
+            border: '2px solid #2b2238',
+            boxShadow: '0 3px 0 #2b2238',
+            borderRadius: 16,
+            fontFamily: 'inherit',
+            fontWeight: 600,
+          },
+          success: { iconTheme: { primary: '#1e9466', secondary: '#ffffff' } },
+          error: { iconTheme: { primary: '#d93d63', secondary: '#ffffff' } },
         }}
       />
       <Screens />
@@ -65,7 +73,7 @@ function Offline() {
         <Star size={56} dim className="mx-auto mb-4" />
         <p className="text-xl font-bold">เชื่อมต่อไม่ได้</p>
         <p className="mt-2 text-mute">ตรวจอินเทอร์เน็ตแล้วลองใหม่อีกครั้ง</p>
-        <button className="btn btn-gold mt-6" onClick={() => window.location.reload()}>
+        <button className="btn btn-primary mt-6" onClick={() => window.location.reload()}>
           ลองใหม่
         </button>
       </div>

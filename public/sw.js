@@ -1,13 +1,13 @@
 // Service worker: เปิดแอปได้แม้เน็ตหลุด (แสดงหน้าเปล่าพร้อมแจ้งว่าออฟไลน์) + รับแจ้งเตือนเด้ง
 // ข้อมูลดาว (/api) ไม่เก็บแคช — ต้องเป็นค่าล่าสุดจากเซิร์ฟเวอร์เสมอ
-const SHELL = 'stars-shell-v1';
-const ASSETS = 'stars-assets';
+const SHELL = 'stars-shell-v2'; // เปลี่ยนเลขเมื่อไอคอน/manifest เปลี่ยน — แคชเก่าถูกลบตอน activate
+const ASSETS = 'stars-assets-v2';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(SHELL)
-      .then((c) => c.addAll(['/', '/manifest.webmanifest', '/icons/icon-192.png']))
+      .then((c) => c.addAll(['/', '/manifest.webmanifest', '/icons/icon-192.png?v=2']))
       .then(() => self.skipWaiting()),
   );
 });
@@ -75,8 +75,8 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(data.title || 'สะสมดาว', {
       body: data.body,
-      icon: '/icons/icon-192.png',
-      badge: '/icons/badge-72.png',
+      icon: '/icons/icon-192.png?v=2',
+      badge: '/icons/badge-72.png?v=2',
       tag: data.tag,
       lang: 'th',
       data: { url: data.url || '/' },

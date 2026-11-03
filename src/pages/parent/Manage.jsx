@@ -38,7 +38,7 @@ export default function Manage() {
 function Row({ onClick, left, title, sub, right }) {
   return (
     <li>
-      <button onClick={onClick} className="flex w-full items-center gap-3 px-3 py-2.5 text-left active:bg-night-700/40">
+      <button onClick={onClick} className="flex w-full items-center gap-3 px-3 py-2.5 text-left active:bg-sunken">
         {left}
         <span className="min-w-0 flex-1">
           <span className="block truncate font-semibold">{title}</span>
@@ -55,7 +55,7 @@ function Row({ onClick, left, title, sub, right }) {
 
 function AddButton({ onClick, children }) {
   return (
-    <button onClick={onClick} className="btn mt-3 w-full border-2 border-dashed border-night-500 text-mute">
+    <button onClick={onClick} className="btn mt-3 w-full border-2 border-dashed border-lilac text-mute">
       + {children}
     </button>
   );
@@ -82,7 +82,7 @@ function EditorSheet({ open, title, onClose, onSave, onDelete, deleteText, child
       <Sheet open={open && !confirmDelete} onClose={onClose} title={title}>
         <form onSubmit={save} className="space-y-4 pb-3">
           {children}
-          <button className="btn btn-gold w-full text-lg" disabled={busy}>
+          <button className="btn btn-primary w-full text-lg" disabled={busy}>
             บันทึก
           </button>
           {onDelete && (
@@ -117,7 +117,7 @@ function KidsTab({ autoAdd }) {
   return (
     <section>
       {data.kids.length > 0 && (
-        <ul className="card divide-y divide-night-600/40 rounded-2xl">
+        <ul className="card divide-y divide-hair rounded-2xl">
           {data.kids.map((k) => (
             <Row key={k.id} onClick={() => setEditing(k)} left={<Avatar kid={k} size={42} />} title={k.name} right={<StarCount value={k.balance} size={18} />} />
           ))}
@@ -183,7 +183,7 @@ function KidEditor({ kid, onClose }) {
               onClick={() => setColor(key)}
               aria-label={c.label}
               aria-pressed={color === key}
-              className={`size-10 rounded-full transition-transform ${color === key ? 'scale-110 ring-4 ring-ink/80' : ''}`}
+              className={`size-10 rounded-full transition-transform ${color === key ? 'scale-110 ring-4 ring-line' : ''}`}
               style={{ background: c.hex }}
             />
           ))}
@@ -225,7 +225,7 @@ function ActivitiesTab() {
             </h3>
           )}
           {list.length > 0 ? (
-            <ul className="card divide-y divide-night-600/40 rounded-2xl">
+            <ul className="card divide-y divide-hair rounded-2xl">
               {list.map((a) => (
                 <Row
                   key={a.id}
@@ -303,7 +303,7 @@ function ActivityEditor({ activity, onClose }) {
                 onClick={() => setSeverity(key)}
                 aria-pressed={severity === key}
                 className="flex-1 rounded-full border-2 py-2 font-semibold"
-                style={severity === key ? { borderColor: info.hex, background: `${info.hex}26`, color: info.hex } : { borderColor: 'transparent', background: 'var(--color-night-950)' }}
+                style={severity === key ? { borderColor: info.hex, background: `${info.hex}26`, color: info.hex } : { borderColor: 'transparent', background: 'var(--color-sunken)' }}
               >
                 {info.label}
               </button>
@@ -328,7 +328,7 @@ function RewardsTab() {
     <section>
       <p className="mb-3 px-1 text-sm text-mute">เรียงจากดาวน้อยไปมาก — ของยิ่งแพง ยิ่งต้องใช้ดาวเยอะ</p>
       {data.rewards.length > 0 && (
-        <ul className="card divide-y divide-night-600/40 rounded-2xl">
+        <ul className="card divide-y divide-hair rounded-2xl">
           {data.rewards.map((r) => (
             <Row
               key={r.id}
@@ -391,7 +391,7 @@ function RewardEditor({ reward, onClose }) {
               key={key}
               onClick={() => setCategory(key)}
               aria-pressed={category === key}
-              className={`rounded-full px-3 py-1.5 text-[15px] font-semibold ${category === key ? 'bg-gold-400 text-[#3a2600]' : 'bg-night-950'}`}
+              className={`rounded-full px-3 py-1.5 text-[15px] font-semibold ${category === key ? 'bg-purple-600 text-white' : 'bg-sunken'}`}
             >
               {c.emoji} {c.label}
             </button>
@@ -425,12 +425,12 @@ function SystemTab() {
         <p className="font-bold">🔔 แจ้งเตือนเมื่อเด็กขอแลกรางวัล</p>
         <p className="mt-1 text-sm text-mute">เปิดบนเครื่องของผู้ปกครองแต่ละคน (เปิดได้หลายเครื่อง)</p>
         {push.needsInstall ? (
-          <p className="mt-2 text-sm text-gold-300">บน iPhone/iPad ต้องเพิ่มแอปไว้บนหน้าจอโฮม แล้วเปิดจากไอคอนก่อน</p>
+          <p className="mt-2 text-sm text-purple-600">บน iPhone/iPad ต้องเพิ่มแอปไว้บนหน้าจอโฮม แล้วเปิดจากไอคอนก่อน</p>
         ) : !push.supported ? (
           <p className="mt-2 text-sm text-mute">เบราว์เซอร์นี้ไม่รองรับการแจ้งเตือน</p>
         ) : (
           <button
-            className={`btn mt-3 w-full ${push.on ? 'btn-soft' : 'btn-gold'}`}
+            className={`btn mt-3 w-full ${push.on ? 'btn-soft' : 'btn-primary'}`}
             disabled={push.busy}
             onClick={async () => {
               try {
@@ -445,7 +445,7 @@ function SystemTab() {
         )}
       </div>
 
-      <ul className="card divide-y divide-night-600/40 rounded-2xl">
+      <ul className="card divide-y divide-hair rounded-2xl">
           <Row onClick={() => setPinOpen(true)} left={<span className="w-9 text-center text-2xl">🔢</span>} title="เปลี่ยน PIN ผู้ปกครอง" />
           <Row
             onClick={() => setCodeOpen(true)}
@@ -526,7 +526,7 @@ function PinSheet({ open, onClose }) {
           {pinField('pin-new', 'PIN ใหม่', next, setNext)}
           {pinField('pin-again', 'PIN ใหม่อีกครั้ง', again, setAgain)}
         </div>
-        <button className="btn btn-gold w-full" disabled={busy}>
+        <button className="btn btn-primary w-full" disabled={busy}>
           เปลี่ยน PIN
         </button>
       </form>
@@ -561,7 +561,7 @@ function FamilyCodeSheet({ open, onClose }) {
       <form onSubmit={submit} className="space-y-4 pb-3">
         <p className="text-mute">ทุกเครื่องที่ใช้อยู่ (ยกเว้นเครื่องนี้) จะต้องใส่รหัสใหม่ — ใช้ตอนรหัสหลุดไปถึงคนนอก</p>
         <input className="field" value={code} onChange={(e) => setCode(e.target.value)} placeholder="รหัสครอบครัวใหม่ (6 ตัวอักษรขึ้นไป)" aria-label="รหัสครอบครัวใหม่" autoComplete="off" />
-        <button className="btn btn-gold w-full" disabled={busy}>
+        <button className="btn btn-primary w-full" disabled={busy}>
           เปลี่ยนรหัส
         </button>
       </form>

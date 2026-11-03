@@ -35,7 +35,7 @@ export default function Requests() {
   return (
     <div>
       <div className="mb-3 flex items-center justify-between px-1">
-        <h2 className="text-lg font-bold">รออนุมัติ {pending.length > 0 && <span className="text-gold-300">({pending.length})</span>}</h2>
+        <h2 className="text-lg font-bold">รออนุมัติ {pending.length > 0 && <span className="text-purple-600">({pending.length})</span>}</h2>
         <button className="btn btn-soft min-h-10 px-4 text-sm" onClick={() => setRedeemOpen(true)}>
           🎁 แลกให้เลย
         </button>
@@ -61,7 +61,7 @@ export default function Requests() {
                     </p>
                   </div>
                 </div>
-                <div className="mt-3 flex items-center gap-3 rounded-2xl bg-night-950/60 px-3 py-2.5">
+                <div className="mt-3 flex items-center gap-3 rounded-2xl bg-sunken px-3 py-2.5">
                   <span className="text-4xl">{r.emoji}</span>
                   <span className="min-w-0 flex-1 font-semibold">{r.name}</span>
                   <StarCount value={r.cost} size={20} className="text-lg" />
@@ -71,7 +71,7 @@ export default function Requests() {
                   <button className="btn btn-soft flex-1" onClick={() => setRejecting(r)} disabled={busyId === r.id}>
                     ✗ ไม่อนุมัติ
                   </button>
-                  <button className="btn btn-gold flex-[1.4]" onClick={() => approve(r)} disabled={busyId === r.id || short}>
+                  <button className="btn btn-primary flex-[1.4]" onClick={() => approve(r)} disabled={busyId === r.id || short}>
                     ✓ อนุมัติ
                   </button>
                 </div>
@@ -84,7 +84,7 @@ export default function Requests() {
       {done.length > 0 && (
         <section className="mt-8">
           <h2 className="mb-3 px-1 text-lg font-bold">ล่าสุด (14 วัน)</h2>
-          <ul className="card divide-y divide-night-600/40 rounded-2xl">
+          <ul className="card divide-y divide-hair rounded-2xl">
             {done.map((r) => {
               const kid = kidById(r.kidId);
               return (
@@ -143,7 +143,7 @@ function RejectSheet({ request, onClose }) {
       <p className="mb-3 text-mute">บอกเหตุผลให้เด็กรู้ (ไม่ใส่ก็ได้)</p>
       <div className="mb-3 flex flex-wrap gap-2">
         {REJECT_REASONS.map((r) => (
-          <button key={r} type="button" onClick={() => setNote(r)} className={`rounded-full px-3 py-1.5 text-sm ${note === r ? 'bg-gold-400 text-[#3a2600]' : 'bg-night-950'}`}>
+          <button key={r} type="button" onClick={() => setNote(r)} className={`rounded-full px-3 py-1.5 text-sm ${note === r ? 'bg-purple-600 text-white' : 'bg-sunken'}`}>
             {r}
           </button>
         ))}
@@ -188,7 +188,7 @@ function RedeemSheet({ open, onClose }) {
       onClose={onClose}
       title="แลกของรางวัลให้"
       footer={
-        <button className="btn btn-gold w-full text-lg" onClick={redeem} disabled={busy || !kid || !reward || available < reward.cost}>
+        <button className="btn btn-primary w-full text-lg" onClick={redeem} disabled={busy || !kid || !reward || available < reward.cost}>
           {reward ? (
             <>
               แลกให้ (ใช้ <StarCount value={reward.cost} size={18} />)
@@ -206,7 +206,7 @@ function RedeemSheet({ open, onClose }) {
             key={k.id}
             onClick={() => setKidId(k.id)}
             aria-pressed={kidId === k.id}
-            className={`flex items-center gap-2 rounded-full py-1 pl-1 pr-3 ${kidId === k.id ? 'bg-gold-400 text-[#3a2600]' : 'bg-night-950'}`}
+            className={`flex items-center gap-2 rounded-full py-1 pl-1 pr-3 ${kidId === k.id ? 'bg-purple-600 text-white' : 'bg-sunken'}`}
           >
             <Avatar kid={k} size={32} />
             <span className="font-semibold">{k.name}</span>
@@ -224,7 +224,7 @@ function RedeemSheet({ open, onClose }) {
                 onClick={() => setRewardId(r.id)}
                 disabled={!can}
                 aria-pressed={rewardId === r.id}
-                className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left ${rewardId === r.id ? 'bg-gold-400/20 ring-2 ring-gold-400' : 'bg-night-950/60'} ${can ? '' : 'opacity-40'}`}
+                className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left ${rewardId === r.id ? 'bg-purple-300/40 ring-2 ring-purple-500' : 'bg-sunken'} ${can ? '' : 'opacity-40'}`}
               >
                 <span className="text-2xl">{r.emoji}</span>
                 <span className="min-w-0 flex-1 truncate">{r.name}</span>

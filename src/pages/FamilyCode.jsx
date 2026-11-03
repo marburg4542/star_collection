@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../lib/api.js';
 import { useStore } from '../lib/store.jsx';
-import { Star } from '../components/ui.jsx';
+import { Logo } from '../components/ui.jsx';
 
 export default function FamilyCode() {
   const { loadStatus } = useStore();
@@ -28,7 +28,7 @@ export default function FamilyCode() {
   return (
     <main className="pad-top mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 pb-16">
       <div className="mb-8 text-center">
-        <Star size={84} className="mx-auto animate-twinkle" />
+        <Logo size={84} className="mx-auto animate-twinkle" />
         <h1 className="mt-4 text-3xl font-bold">สะสมดาว</h1>
         <p className="mt-2 text-mute">ใส่รหัสครอบครัวเพื่อเข้าใช้งานบนเครื่องนี้</p>
       </div>
@@ -43,7 +43,7 @@ export default function FamilyCode() {
           autoFocus
         />
         {error && <p className="text-center text-sm text-bad">{error}</p>}
-        <button className="btn btn-gold w-full text-lg" disabled={busy || !code.trim()}>
+        <button className="btn btn-primary w-full text-lg" disabled={busy || !code.trim()}>
           เข้าใช้งาน
         </button>
       </form>

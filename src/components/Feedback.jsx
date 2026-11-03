@@ -15,8 +15,8 @@ export function Celebration({ kid, items, onClose }) {
   const net = items.reduce((sum, t) => sum + t.amount, 0);
   const good = net >= 0;
   return createPortal(
-    <div className="fixed inset-0 z-50 grid place-items-center overflow-hidden bg-night-950/85 p-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="ดาวใหม่">
-      <div className="relative w-full max-w-sm text-center animate-pop">
+    <div className="fixed inset-0 z-50 grid place-items-center overflow-hidden bg-ink/50 p-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="ดาวใหม่">
+      <div className="card relative w-full max-w-sm px-5 pb-5 pt-6 text-center animate-pop">
         {good &&
           BURST.map((b, i) => (
             <span
@@ -24,15 +24,15 @@ export function Celebration({ kid, items, onClose }) {
               className="burst-star"
               style={{ '--dx': `${b.dx}px`, '--dy': `${b.dy}px`, '--rot': `${b.rot}deg`, animationDelay: `${b.delay}ms` }}
             >
-              <Star size={b.size} />
+              {i % 3 === 2 ? <span style={{ fontSize: b.size }}>💗</span> : <Star size={b.size} />}
             </span>
           ))}
         <div className="text-7xl">{good ? '🎉' : '🥺'}</div>
         <p className="mt-3 text-2xl font-bold">{good ? `เย้! ${kid.name} ได้ดาวเพิ่ม` : `โอ๊ะ ${kid.name} โดนหักดาว`}</p>
-        <p className={`my-3 flex items-center justify-center gap-2 text-6xl font-bold tabular ${good ? 'text-gold-300' : 'text-bad'}`}>
+        <p className={`my-3 flex items-center justify-center gap-2 text-6xl font-bold tabular ${good ? 'text-ink' : 'text-bad'}`}>
           {signed(net)} <Star size={54} dim={!good} />
         </p>
-        <ul className="card mb-4 max-h-52 overflow-y-auto p-2 text-left">
+        <ul className="mb-4 max-h-52 overflow-y-auto rounded-2xl bg-sunken p-2 text-left">
           {items.slice(0, 8).map((t) => (
             <li key={t.id} className="flex items-center gap-2 px-2 py-1.5">
               <span className="text-2xl">{t.emoji}</span>
@@ -42,7 +42,7 @@ export function Celebration({ kid, items, onClose }) {
           ))}
         </ul>
         {!good && <p className="mb-4 text-mute">ไม่เป็นไรนะ ทำดีใหม่ เก็บดาวคืนได้</p>}
-        <button className="btn btn-gold w-full text-lg" onClick={onClose} autoFocus>
+        <button className="btn btn-primary w-full text-lg" onClick={onClose} autoFocus>
           {good ? 'เก่งมาก! 👍' : 'จะตั้งใจใหม่ 💪'}
         </button>
       </div>
@@ -90,7 +90,7 @@ export function Confirm({ open, title, children, confirmLabel = 'ยืนยั
             ไม่ใช่
           </button>
           <button
-            className={`btn flex-[2] ${danger ? 'btn-danger' : 'btn-gold'}`}
+            className={`btn flex-[2] ${danger ? 'btn-danger' : 'btn-primary'}`}
             disabled={busy}
             onClick={async () => {
               setBusy(true);

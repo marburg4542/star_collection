@@ -24,7 +24,7 @@ export default function Give() {
   if (!kids.length) {
     return (
       <Empty emoji="👶" title="เพิ่มรายชื่อเด็กก่อนนะ">
-        <Link to="/parent/manage?tab=kids&add=1" className="btn btn-gold mt-3">
+        <Link to="/parent/manage?tab=kids&add=1" className="btn btn-primary mt-3">
           + เพิ่มเด็ก
         </Link>
       </Empty>
@@ -63,7 +63,7 @@ export default function Give() {
         <div className="mb-2 flex items-center justify-between px-1">
           <h2 className="font-bold">ให้ใคร?</h2>
           {kids.length > 1 && (
-            <button className="text-sm font-semibold text-gold-300" onClick={() => setSelected(allSelected ? [] : kids.map((k) => k.id))}>
+            <button className="text-sm font-semibold text-purple-600" onClick={() => setSelected(allSelected ? [] : kids.map((k) => k.id))}>
               {allSelected ? 'ไม่เลือกเลย' : 'เลือกทุกคน'}
             </button>
           )}
@@ -76,12 +76,12 @@ export default function Give() {
                 key={k.id}
                 onClick={() => toggle(k.id)}
                 aria-pressed={on}
-                className={`flex shrink-0 items-center gap-2 rounded-full py-1.5 pl-1.5 pr-4 transition-colors ${on ? 'bg-gold-400 text-[#3a2600]' : 'bg-night-800 text-ink'}`}
+                className={`flex shrink-0 items-center gap-2 rounded-full py-1.5 pl-1.5 pr-4 transition-colors ${on ? 'bg-purple-600 text-white' : 'chip-off'}`}
               >
                 <Avatar kid={k} size={38} />
                 <span className="text-left leading-tight">
                   <span className="block font-bold">{k.name}</span>
-                  <span className={`block text-xs ${on ? 'text-[#5a4300]' : 'text-mute'}`}>⭐ {k.balance}</span>
+                  <span className={`block text-xs ${on ? 'text-white/80' : 'text-mute'}`}>⭐ {k.balance}</span>
                 </span>
               </button>
             );
@@ -142,7 +142,7 @@ function ActivityGrid({ items, onPick, disabled }) {
             disabled={disabled}
             onClick={() => onPick(a)}
             className="card flex flex-col items-start gap-1 rounded-2xl p-3 text-left transition-transform active:scale-95"
-            style={earn ? undefined : { borderColor: `${SEVERITY[a.severity]?.hex}66` }}
+            style={earn ? undefined : { borderColor: SEVERITY[a.severity]?.hex }}
           >
             <span className="flex w-full items-start justify-between">
               <span className="text-3xl">{a.emoji}</span>
@@ -206,7 +206,7 @@ function CustomSheet({ open, mode, onClose, onSubmit }) {
                   onClick={() => setSeverity(key)}
                   aria-pressed={severity === key}
                   className="flex-1 rounded-full border-2 py-2 font-semibold"
-                  style={severity === key ? { borderColor: info.hex, background: `${info.hex}26`, color: info.hex } : { borderColor: 'transparent', background: 'var(--color-night-950)' }}
+                  style={severity === key ? { borderColor: info.hex, background: `${info.hex}26`, color: info.hex } : { borderColor: 'transparent', background: 'var(--color-sunken)' }}
                 >
                   {info.label}
                 </button>
@@ -214,7 +214,7 @@ function CustomSheet({ open, mode, onClose, onSubmit }) {
             </div>
           </div>
         )}
-        <button className={`btn w-full text-lg ${earn ? 'btn-gold' : 'btn-danger'}`}>
+        <button className={`btn w-full text-lg ${earn ? 'btn-primary' : 'btn-danger'}`}>
           {earn ? 'ให้' : 'หัก'} <StarCount value={stars} size={20} />
         </button>
       </form>
