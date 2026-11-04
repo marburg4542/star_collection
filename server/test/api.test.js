@@ -158,8 +158,11 @@ test('รางวัลเล่นโทรศัพท์ตัวอย่�
 
 test('จับคู่มือถือด้วยรหัสจากโหมดผู้ปกครอง ใช้ได้ครั้งเดียว', async () => {
   assert.equal((await kidPhone.post('/api/parent/phones/pair-code', { kidId: kidA })).status, 401, 'เด็กขอรหัสเองไม่ได้');
-  const { code } = (await mom.post('/api/parent/phones/pair-code', { kidId: kidA })).body;
+  const { code, expiresAt } = (await mom.post('/api/parent/phones/pair-code', { kidId: kidA })).body;
   assert.match(code, /^\d{6}$/);
+  assert.ok(Date.parse(expiresAt) - Date.now() <= 10 * 60_000, 'รหัสพิมพ์เองใช้ได้ 10 นาที');
+  const qr = (await mom.post('/api/parent/phones/pair-code', { kidId: kidA, qr: true })).body;
+  assert.ok(Date.parse(qr.expiresAt) - Date.now() > 25 * 60_000, 'QR ตั้งเครื่องใหม่ให้เวลา 30 นาที');
   assert.equal((await phone.post('/api/phone/pair', { code: '000000', name: 'x' })).status, 401);
   const paired = await phone.post('/api/phone/pair', { code, name: 'Galaxy A15' });
   assert.equal(paired.status, 200);

@@ -13,6 +13,8 @@ const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric',
 export const today = () => dayFmt.format(new Date());
 
 const PAIR_TTL_MS = 10 * 60 * 1000;
+// QR ตอนตั้งเครื่องใหม่: ต้องต่อ Wi‑Fi ดาวน์โหลดแอป และผ่านหน้าตั้งค่าหลายหน้าก่อนถึงขั้นจับคู่ — ให้เวลานานกว่า
+const PAIR_QR_TTL_MS = 30 * 60 * 1000;
 export const TIME_REQUEST_MINUTES = [15, 30, 60];
 const LOCK_REASONS = ['manual', 'bedtime', 'limit', 'tamper'];
 
@@ -201,14 +203,14 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
 
   // ---------- รหัสจับคู่ (อยู่ในหน่วยความจำ 10 นาที ใช้ได้ครั้งเดียว) ----------
   const pairCodes = new Map(); // code → { kidId, expires }
-  function newPairCode(kidId) {
+  function newPairCode(kidId, ttl) {
     const now = Date.now();
     for (const [c, v] of pairCodes) if (v.expires < now) pairCodes.delete(c);
     let code;
     do code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
     while (pairCodes.has(code));
-    pairCodes.set(code, { kidId, expires: now + PAIR_TTL_MS });
-    return { code, expiresAt: new Date(now + PAIR_TTL_MS).toISOString() };
+    pairCodes.set(code, { kidId, expires: now + ttl });
+    return { code, expiresAt: new Date(now + ttl).toISOString() };
   }
 
   // ---------- ช่องทางของแอปบนเครื่องลูก (Authorization: Bearer <token>) ----------
@@ -413,7 +415,7 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
     });
 
     P.post('/phones/pair-code', (req, res) => {
-      res.json(newPairCode(mustKid(req.body.kidId).id));
+      res.json(newPairCode(mustKid(req.body.kidId).id, req.body.qr ? PAIR_QR_TTL_MS : PAIR_TTL_MS));
     });
 
     P.put('/phones/:id', (req, res) => {

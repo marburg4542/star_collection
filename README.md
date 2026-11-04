@@ -17,6 +17,7 @@
 | service worker, manifest, ไอคอน | `public/` (สร้างไอคอนใหม่: `npm run icons`) |
 | API Express + SQLite | `server/` (`app.js` = เส้นทาง API, `db.js` = ตาราง, `seed.js` = ตัวอย่างเริ่มต้น) |
 | มือถือของลูก (จับคู่, กติกาเวลา, `/api/phone/*` ที่แอปล็อคจอใช้) | `server/screen.js` · หน้าเว็บ `src/pages/parent/Phones.jsx` |
+| ไฟล์แอปล็อคจอให้ QR ตั้งเครื่องดาวน์โหลด | `public/kidlock/` (อัปเดตด้วย `bash ../kid_lock/publish-apk.sh` แล้ว push) |
 | เทสต์ API | `server/test/` (`npm test`) |
 
 ## รันบนเครื่องพัฒนา

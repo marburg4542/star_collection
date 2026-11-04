@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { api } from '../../lib/api.js';
 import { useStore } from '../../lib/store.jsx';
 import { ago, dayLabel, dayToDate, duration, minutesUntil, timeOf, todayType, weekdayShort } from '../../lib/format.js';
-import { Avatar, Empty, Sheet, Spinner } from '../../components/ui.jsx';
+import { Avatar, Empty, Segmented, Sheet, Spinner } from '../../components/ui.jsx';
 import { Confirm } from '../../components/Feedback.jsx';
 
 const LOCK = {
@@ -695,19 +695,45 @@ function PhoneMenu({ phone, onClose, onDone }) {
 
 // ---------- จับคู่เครื่องใหม่ ----------
 
+const SETUP_METHODS = [
+  { value: 'qr', label: '📷 สแกน QR' },
+  { value: 'code', label: '🔢 รหัส 6 หลัก' },
+];
+
+/**
+ * ข้อความใน QR สำหรับหน้าตั้งค่าเครื่องของ Android (แตะหน้าแรก 6 ครั้ง)
+ * ระบบดาวน์โหลดแอปจากเว็บนี้ ตรวจลายเซ็น ตั้งเป็น Device Owner แล้วส่ง { server, code } ให้แอปจับคู่เอง
+ */
+function provisioningQr(app, code) {
+  const origin = window.location.origin;
+  return JSON.stringify({
+    'android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME': app.component,
+    'android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION': new URL(app.apk, origin).href,
+    'android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM': app.checksum,
+    // ไม่งั้นระบบจะปิดแอปติดเครื่องที่ไม่จำเป็น (กล้อง, Chrome ฯลฯ) ตอนตั้งแบบผู้ดูแลจัดการทั้งเครื่อง
+    'android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED': true,
+    'android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE': { server: origin, code },
+  });
+}
+
 function AddPhoneSheet({ open, onClose }) {
   const { data } = useStore();
   const [kidId, setKidId] = useState(null);
-  const [pair, setPair] = useState(null);
+  const [method, setMethod] = useState('qr');
+  const [pair, setPair] = useState(null); // { code, expiresAt, qr? }
+  const [app, setApp] = useState(undefined); // ไฟล์แอปบนเซิร์ฟเวอร์ (/kidlock/info.json) · null = ยังไม่มี
   const [busy, setBusy] = useState(false);
   const [, tick] = useState(0);
 
   // รีเซ็ตเฉพาะตอนเปิดหน้าต่าง — data.kids เป็น array ใหม่ทุกครั้งที่มีอะไรเปลี่ยน ถ้าใส่ไว้ใน deps รหัสที่ขึ้นอยู่จะหาย
   useEffect(() => {
-    if (open) {
-      setKidId(data.kids.length === 1 ? data.kids[0].id : null);
-      setPair(null);
-    }
+    if (!open) return;
+    setKidId(data.kids.length === 1 ? data.kids[0].id : null);
+    setPair(null);
+    fetch('/kidlock/info.json', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setApp)
+      .catch(() => setApp(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   useEffect(() => {
@@ -719,7 +745,14 @@ function AddPhoneSheet({ open, onClose }) {
   async function getCode() {
     setBusy(true);
     try {
-      setPair(await api.post('/api/parent/phones/pair-code', { kidId }));
+      const qr = method === 'qr';
+      const next = await api.post('/api/parent/phones/pair-code', { kidId, qr });
+      if (qr) {
+        const { default: QRCode } = await import('qrcode');
+        const svg = await QRCode.toString(provisioningQr(app, next.code), { type: 'svg', errorCorrectionLevel: 'L', margin: 2 });
+        next.qr = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      }
+      setPair(next);
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -728,12 +761,54 @@ function AddPhoneSheet({ open, onClose }) {
   }
 
   const left = pair ? Math.max(0, Date.parse(pair.expiresAt) - Date.now()) : 0;
+  const countdown = `${Math.floor(left / 60000)}:${String(Math.floor((left % 60000) / 1000)).padStart(2, '0')}`;
   const kid = data.kids.find((k) => k.id === kidId);
+
+  if (pair?.qr) {
+    return (
+      <Sheet open={open} onClose={onClose} title={`ตั้งมือถือของ${kid?.name}ด้วย QR`}>
+        <div className="pb-4 text-center">
+          {left > 0 ? (
+            <>
+              <img src={pair.qr} alt="QR สำหรับตั้งเครื่อง" className="mx-auto w-full max-w-[300px] rounded-2xl border-2 border-line bg-white" />
+              <p className="mt-3 text-[15px]">สแกนด้วยมือถือที่อยู่หน้าตั้งค่าเครื่อง (หลังแตะหน้าแรก 6 ครั้ง)</p>
+              <p className="mt-1 text-sm text-mute">ใช้ได้อีก {countdown} นาที · ใช้ได้ครั้งเดียว</p>
+            </>
+          ) : (
+            <button className="btn btn-soft mt-2" onClick={getCode} disabled={busy}>
+              QR หมดอายุ สร้างใหม่
+            </button>
+          )}
+          <p className="mt-4 rounded-2xl bg-sunken px-3 py-2.5 text-left text-sm text-mute">
+            เครื่องจะดาวน์โหลดแอปล็อคจอและจับคู่เอง จากนั้นตั้งเครื่องต่อจนเสร็จ แล้วเปิดแอป “ล็อคจอ” เพื่อเปิดสิทธิ์ดูการใช้งาน
+          </p>
+        </div>
+      </Sheet>
+    );
+  }
 
   return (
     <Sheet open={open} onClose={onClose} title="เพิ่มมือถือของลูก">
       {!pair ? (
         <div className="pb-3">
+          <Segmented className="mb-3" value={method} onChange={setMethod} options={SETUP_METHODS} />
+          {method === 'qr' ? (
+            <div className="mb-4 rounded-2xl bg-sunken px-3 py-2.5 text-[15px]">
+              <p className="font-semibold">สำหรับเครื่องใหม่ หรือเครื่องที่ล้างได้ — ไม่ต้องใช้คอม</p>
+              <ol className="mt-1 list-decimal space-y-1 pl-5 text-mute">
+                <li>สำรองข้อมูล แล้ว<b className="text-ink">ลบบัญชี Google ออกก่อน</b> ค่อยล้างเครื่อง (ไม่งั้นหลังล้างจะถามรหัสบัญชีเดิม)</li>
+                <li>หน้า “ยินดีต้อนรับ” แตะที่ว่างบนจอจุดเดิม 6 ครั้ง กล้องสแกน QR จะเปิด (ต่อ Wi‑Fi ถ้าเครื่องถาม)</li>
+                <li>เลือกชื่อลูก กด “สร้าง QR” แล้วสแกน</li>
+              </ol>
+              <p className="mt-2 text-sm text-mute">เครื่องที่ใช้อยู่และไม่อยากล้าง ให้เลือก “รหัส 6 หลัก” (ต้องใช้คอม)</p>
+            </div>
+          ) : (
+            <ol className="mb-4 list-decimal space-y-1 pl-5 text-[15px] text-mute">
+              <li>ติดตั้งแอป “ล็อคจอ” บนมือถือลูก แล้วตั้งเป็น Device Owner ด้วย ADB</li>
+              <li>เปิดแอป แล้วเปิดสิทธิ์ตามที่แอปขอ</li>
+              <li>กดปุ่มด้านล่างเพื่อรับรหัส แล้วใส่ในแอป</li>
+            </ol>
+          )}
           <p className="label">มือถือของใคร</p>
           <div className="mb-4 flex flex-wrap gap-2">
             {data.kids.map((k) => (
@@ -748,13 +823,13 @@ function AddPhoneSheet({ open, onClose }) {
               </button>
             ))}
           </div>
-          <ol className="mb-4 list-decimal space-y-1 pl-5 text-[15px] text-mute">
-            <li>ติดตั้งแอป “ล็อคจอ” บนมือถือลูก แล้วตั้งเป็น Device Owner ด้วย ADB</li>
-            <li>เปิดแอป แล้วเปิดสิทธิ์ตามที่แอปขอ</li>
-            <li>กดปุ่มด้านล่างเพื่อรับรหัส แล้วใส่ในแอป</li>
-          </ol>
-          <button className="btn btn-primary w-full" onClick={getCode} disabled={!kidId || busy}>
-            ขอรหัสจับคู่
+          {method === 'qr' && app === null && <p className="mb-2 text-sm text-bad">ยังไม่มีไฟล์แอปบนเซิร์ฟเวอร์ — ใช้ “รหัส 6 หลัก” ไปก่อน</p>}
+          <button
+            className="btn btn-primary w-full"
+            onClick={getCode}
+            disabled={!kidId || busy || (method === 'qr' && !app)}
+          >
+            {method === 'qr' ? 'สร้าง QR' : 'ขอรหัสจับคู่'}
           </button>
         </div>
       ) : (
@@ -762,9 +837,7 @@ function AddPhoneSheet({ open, onClose }) {
           <p className="text-mute">ใส่รหัสนี้ในแอปบนมือถือของ{kid?.name}</p>
           <p className="my-3 font-bold tabular tracking-[0.25em] text-5xl">{pair.code}</p>
           {left > 0 ? (
-            <p className="text-sm text-mute">
-              หมดอายุใน {Math.floor(left / 60000)}:{String(Math.floor((left % 60000) / 1000)).padStart(2, '0')} นาที · ใช้ได้ครั้งเดียว
-            </p>
+            <p className="text-sm text-mute">หมดอายุใน {countdown} นาที · ใช้ได้ครั้งเดียว</p>
           ) : (
             <button className="btn btn-soft mt-1" onClick={getCode} disabled={busy}>
               รหัสหมดอายุ ขอใหม่
