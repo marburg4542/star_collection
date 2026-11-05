@@ -16,44 +16,63 @@ const BANGKOK = [13.7563, 100.5018]; // ยังไม่มีตำแหน�
 
 const fresh = (loc) => Date.now() - Date.parse(loc.at) < FRESH_MS;
 
-const NEAR_M = 40; // ลูกอยู่ใกล้กันกว่านี้ (เช่น อยู่บ้านด้วยกัน) → เลื่อนหมุดออกข้างกัน ไม่ทับจนมองไม่เห็นอีกคน
-const SPREAD_PX = 80; // กว้างพอให้ป้ายชื่อใต้หมุด (เช่น “น้องข้าวหอม”) ไม่ทับกัน
+/** ขนาดหมุดตามระดับซูม — ซูมออกแล้วหมุดเล็กลง ไม่บังแผนที่ · ซูมออกมาก (เห็นทั้งอำเภอ) ซ่อนป้ายชื่อ */
+function pinStyle(zoom) {
+  const size = zoom >= 17 ? 44 : zoom >= 16 ? 40 : zoom >= 15 ? 34 : zoom >= 14 ? 30 : zoom >= 12 ? 26 : 22;
+  return { size, named: zoom >= 13 };
+}
 
-/** เลื่อนหมุดที่ทับกัน: phoneId → ระยะเลื่อนแนวนอน (px) · วงความแม่นยำยังอยู่ที่จุดจริง */
-function spreadOf(phones) {
+/**
+ * หมุดที่ทับกันบนจอ (เช่น อยู่บ้านด้วยกัน หรือซูมออกจนใกล้กัน) → เรียงข้างกันรอบจุดกลางของกลุ่ม
+ * คืน phoneId → { dx, dy } (px) ที่ต้องเลื่อนหมุดจากจุดจริง · วงความแม่นยำยังอยู่ที่จุดจริง
+ */
+function spreadOf(map, phones, { size, named }) {
+  const gap = named ? 80 : size + 6; // กว้างพอให้ป้ายชื่อใต้หมุด (เช่น “น้องข้าวหอม”) ไม่ทับกัน
   const groups = [];
   for (const p of phones) {
-    const at = L.latLng(p.location.lat, p.location.lng);
-    const group = groups.find((g) => g.at.distanceTo(at) < NEAR_M);
-    if (group) group.ids.push(p.id);
-    else groups.push({ at, ids: [p.id] });
+    const pt = map.latLngToLayerPoint([p.location.lat, p.location.lng]);
+    const group = groups.find((g) => g[0].pt.distanceTo(pt) < gap);
+    if (group) group.push({ id: p.id, pt });
+    else groups.push([{ id: p.id, pt }]);
   }
-  const dx = new Map();
-  for (const g of groups) g.ids.forEach((id, i) => dx.set(id, (i - (g.ids.length - 1) / 2) * SPREAD_PX));
-  return dx;
+  const offsets = new Map();
+  for (const group of groups) {
+    const cx = group.reduce((sum, q) => sum + q.pt.x, 0) / group.length;
+    const cy = group.reduce((sum, q) => sum + q.pt.y, 0) / group.length;
+    group
+      .sort((a, b) => a.pt.x - b.pt.x) // คนที่อยู่ทางซ้ายจริงยังอยู่ซ้าย
+      .forEach((q, i) => offsets.set(q.id, { dx: cx + (i - (group.length - 1) / 2) * gap - q.pt.x, dy: cy - q.pt.y }));
+  }
+  return offsets;
 }
 
 /** หมุดรูปอวตารของลูก + ชื่อใต้หมุด — สร้างเป็น DOM (textContent) ชื่อจะไม่ถูกตีความเป็น HTML */
-function pinIcon(kid, stale, dx = 0) {
+function pinIcon(kid, stale, { size, named }, { dx, dy } = { dx: 0, dy: 0 }) {
+  const thick = size >= 30;
   const el = document.createElement('div');
-  el.style.cssText = `position:relative;width:48px;height:48px;opacity:${stale ? 0.55 : 1}`;
+  el.style.cssText = `position:relative;width:${size}px;height:${size}px;opacity:${stale ? 0.55 : 1}`;
   const face = document.createElement('div');
   const color = KID_COLORS[kid?.color]?.hex ?? '#6cc8ff';
   face.style.cssText = [
-    'width:48px;height:48px;border-radius:9999px;display:grid;place-items:center;font-size:27px;line-height:1',
-    'border:2.5px solid var(--color-line);box-shadow:0 3px 0 var(--color-line)',
+    `width:${size}px;height:${size}px;border-radius:9999px;display:grid;place-items:center;font-size:${Math.round(size * 0.56)}px;line-height:1`,
+    `border:${thick ? 2.5 : 2}px solid var(--color-line);box-shadow:0 ${thick ? 3 : 2}px 0 var(--color-line)`,
     `background:radial-gradient(circle at 35% 30%, #ffffff80, transparent 60%), ${color}`,
   ].join(';');
   face.textContent = kid?.avatar ?? '🙂';
-  const name = document.createElement('div');
-  name.style.cssText = [
-    'position:absolute;top:53px;left:50%;transform:translateX(-50%);white-space:nowrap',
-    'background:var(--color-card);border:2px solid var(--color-line);border-radius:9999px',
-    'padding:0 8px;font-size:12px;font-weight:700;line-height:18px;color:var(--color-ink)',
-  ].join(';');
-  name.textContent = kid?.name ?? '';
-  el.append(face, name);
-  return L.divIcon({ html: el, className: '', iconSize: [48, 48], iconAnchor: [24 - dx, 24], popupAnchor: [dx, -26] });
+  el.append(face);
+  if (named) {
+    const big = size >= 34;
+    const name = document.createElement('div');
+    name.style.cssText = [
+      `position:absolute;top:${size + 5}px;left:50%;transform:translateX(-50%);white-space:nowrap`,
+      'background:var(--color-card);border:2px solid var(--color-line);border-radius:9999px',
+      `padding:0 ${big ? 8 : 6}px;font-size:${big ? 12 : 11}px;font-weight:700;line-height:${big ? 18 : 16}px;color:var(--color-ink)`,
+    ].join(';');
+    name.textContent = kid?.name ?? '';
+    el.append(name);
+  }
+  const half = size / 2;
+  return L.divIcon({ html: el, className: '', iconSize: [size, size], iconAnchor: [half - dx, half - dy], popupAnchor: [dx, dy - half - 2] });
 }
 
 function popupOf(kid, phone) {
@@ -84,6 +103,7 @@ export default function FamilyMap({ phones, kids, onClose }) {
   const phonesRef = useRef(phones);
   phonesRef.current = phones;
   const [live, setLive] = useState(true);
+  const [zoom, setZoom] = useState(11);
 
   const kidById = useMemo(() => new Map(kids.map((k) => [k.id, k])), [kids]);
   const shown = useMemo(
@@ -118,6 +138,7 @@ export default function FamilyMap({ phones, kids, onClose }) {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>',
     }).addTo(map);
+    map.on('zoomend', () => setZoom(map.getZoom()));
     mapRef.current = map;
     const layers = layersRef.current;
     return () => {
@@ -134,7 +155,8 @@ export default function FamilyMap({ phones, kids, onClose }) {
     if (!map) return;
     const layers = layersRef.current;
     const located = shown.filter((p) => p.location);
-    const spread = spreadOf(located);
+    const style = pinStyle(zoom);
+    const spread = spreadOf(map, located, style);
     const seen = new Set();
     for (const p of located) {
       const loc = p.location;
@@ -142,7 +164,7 @@ export default function FamilyMap({ phones, kids, onClose }) {
       const kid = kidById.get(p.kidId);
       const at = [loc.lat, loc.lng];
       const color = KID_COLORS[kid?.color]?.hex ?? '#6cc8ff';
-      const icon = pinIcon(kid, !fresh(loc), spread.get(p.id));
+      const icon = pinIcon(kid, !fresh(loc), style, spread.get(p.id));
       let layer = layers.get(p.id);
       if (!layer) {
         layer = {
@@ -155,6 +177,7 @@ export default function FamilyMap({ phones, kids, onClose }) {
         layer.circle.setLatLng(at).setRadius(loc.accuracy || 0);
       }
       layer.marker.bindPopup(popupOf(kid, p));
+      if (layer.marker.isPopupOpen()) layer.marker.getPopup().update(); // หมุดเปลี่ยนขนาด → ขยับป้ายตามให้อยู่เหนือหมุด
     }
     for (const [id, layer] of layers) {
       if (seen.has(id)) continue;
@@ -167,7 +190,7 @@ export default function FamilyMap({ phones, kids, onClose }) {
       fittedRef.current = true;
       fitAll();
     }
-  }, [shown, kidById]);
+  }, [shown, kidById, zoom]);
 
   // อัปเดตสด: ขอตำแหน่งทุกเครื่องทุก 30 วิ เฉพาะตอนหน้านี้เปิดอยู่บนจอ · ครบ 15 นาทีหยุดเอง
   useEffect(() => {
