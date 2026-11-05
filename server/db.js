@@ -98,7 +98,7 @@ const MIGRATIONS = [
     SEED_REWARDS.forEach((r, i) => addReward.run(r.name, r.emoji, r.category, r.cost, i));
   },
 
-  // มือถือของลูก (แอปล็อคจอ Device Owner) + เวลาเล่น
+  // มือถือของลูก (แอปล็อคจอ) + เวลาเล่น
   (db) => {
     db.exec(`
       -- รางวัลหมวดเล่นโทรศัพท์: อนุมัติแล้วเครื่องลูกได้เวลาเพิ่มกี่นาที (คำขอเก็บสำเนาไว้เหมือนชื่อ/ราคา)
@@ -186,6 +186,11 @@ const MIGRATIONS = [
       ALTER TABLE phones ADD COLUMN location TEXT;
       ALTER TABLE phones ADD COLUMN locate_requested_at TEXT;
     `);
+  },
+
+  // แจ้งผู้ปกครองเมื่อมือถือเงียบไปนาน — จำว่าแจ้งไปแล้วเมื่อไหร่ (แจ้งครั้งเดียวต่อช่วงที่เงียบ)
+  (db) => {
+    db.exec('ALTER TABLE phones ADD COLUMN silent_alerted_at TEXT;');
   },
 ];
 

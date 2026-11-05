@@ -1,5 +1,6 @@
 // มือถือของลูก: จับคู่เครื่อง, กติกาเวลาเล่น, เวลาพิเศษ, คำขอเวลาเพิ่ม
-// แอปบนเครื่องลูก (kid_lock, Device Owner) เป็นคนตัดสินว่าต้องล็อคเมื่อไหร่ — ไม่มีเน็ตก็ยังบังคับใช้ได้
+// แอปบนเครื่องลูก (kid_lock) เป็นคนตัดสินว่าต้องล็อคเมื่อไหร่ — ไม่มีเน็ตก็ยังบังคับใช้ได้
+// เครื่องมี 2 แบบ: owner (Device Owner ตั้งด้วย QR/ADB) และ standard (ติดตั้งจากเว็บ ใช้ผู้ดูแลอุปกรณ์ + การช่วยเหลือพิเศษ)
 // เซิร์ฟเวอร์เก็บกติกา/คำสั่ง แล้วบอกให้เครื่องโหลดใหม่ผ่าน SSE ช่องของมือถือ
 import crypto from 'node:crypto';
 import express from 'express';
@@ -17,6 +18,14 @@ const PAIR_TTL_MS = 10 * 60 * 1000;
 const PAIR_QR_TTL_MS = 30 * 60 * 1000;
 export const TIME_REQUEST_MINUTES = [15, 30, 60];
 const LOCK_REASONS = ['manual', 'bedtime', 'limit', 'tamper'];
+const MODES = ['owner', 'standard'];
+const PROTECTIONS = ['admin', 'accessibility', 'usage', 'notifications', 'location', 'battery'];
+// สิทธิ์ที่ถ้าหายไปแปลว่าคุมเครื่องไม่ได้แล้ว → แจ้งผู้ปกครอง (แบบ Device Owner ระบบกันส่วนอื่นไว้ให้แล้ว)
+const REQUIRED = { owner: ['usage'], standard: ['admin', 'accessibility', 'usage'] };
+const PROTECTION_NAMES = { admin: 'ผู้ดูแลอุปกรณ์', accessibility: 'การช่วยเหลือพิเศษ', usage: 'สิทธิ์ดูการใช้งาน' };
+// เครื่องส่งสัญญาณทุกนาทีตอนเปิดใช้ และทุก ~20 นาทีตอนหลับ — เงียบเกินนี้แจ้งผู้ปกครอง
+export const SILENT_MS = 60 * 60 * 1000;
+const SILENT_CHECK_MS = 5 * 60 * 1000;
 
 // วันเรียน = จันทร์–ศุกร์ · เวลานอนแยกตาม "พรุ่งนี้เป็นวันเรียนไหม" (ตัดสินฝั่งเครื่อง)
 export const DEFAULT_RULES = {
@@ -89,6 +98,17 @@ function readAppUsage(list) {
         .filter(validApp)
         .map((a) => ({ pkg: a.pkg, label: appLabel(a), sec: Math.max(0, Math.min(86_400, Math.round(Number(a.sec) || 0))) })),
     }));
+}
+
+function readProtections(p) {
+  if (!p || typeof p !== 'object') return null;
+  return Object.fromEntries(PROTECTIONS.map((k) => [k, p[k] === true]));
+}
+
+/** สิทธิ์ที่จำเป็นที่เพิ่งหายไปในรายงานนี้ (เคยมีในรายงานก่อน) — แจ้งครั้งเดียวต่อการหาย */
+function lostProtections(prev, report) {
+  if (!report.mode || !report.protections || !prev?.protections) return [];
+  return REQUIRED[report.mode].filter((k) => prev.protections[k] && !report.protections[k]);
 }
 
 function readLocation(b) {
@@ -291,10 +311,25 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
       pausedUntil: typeof b.pausedUntil === 'string' ? b.pausedUntil.slice(0, 40) : null,
       // ตำแหน่งใช้ได้ไหม: ok / off (ปิด GPS) / no-permission (ยังไม่ได้ให้สิทธิ์)
       location: ['ok', 'off', 'no-permission'].includes(b.location) ? b.location : null,
+      mode: MODES.includes(b.mode) ? b.mode : null,
+      protections: readProtections(b.protections),
       version: String(b.version ?? '').slice(0, 20),
       at: nowIso(),
     };
     const prev = parse(req.phone.report);
+    const lost = lostProtections(prev, report);
+    if (lost.length) {
+      const kid = mustKid(req.phone.kid_id);
+      push.notify(
+        { role: 'parent' },
+        {
+          title: `⚠️ ${kid.avatar} ${kid.name}: ${req.phone.name} ถูกปิด${lost.map((k) => PROTECTION_NAMES[k]).join(', ')}`,
+          body: 'เครื่องล็อคไว้แล้ว ใส่ PIN บนเครื่อง → ผู้ปกครอง เพื่อเปิดคืน',
+          url: '/parent/phones',
+          tag: `protect-${req.phone.id}`,
+        },
+      );
+    }
     s.saveUsage.run(req.phone.id, day, usedSec);
     const appUsage = readAppUsage(b.appUsage);
     if (appUsage.length) {
@@ -306,7 +341,8 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
     const apps = readApps(b.apps);
     if (apps) db.prepare('UPDATE phones SET report = ?, apps = ? WHERE id = ?').run(JSON.stringify(report), JSON.stringify(apps), req.phone.id);
     else db.prepare('UPDATE phones SET report = ? WHERE id = ?').run(JSON.stringify(report), req.phone.id);
-    if (!prev || prev.lock !== lock || prev.location !== report.location || apps) changed('phones');
+    const protectionsChanged = JSON.stringify(prev?.protections ?? null) !== JSON.stringify(report.protections) || prev?.mode !== report.mode;
+    if (!prev || prev.lock !== lock || prev.location !== report.location || protectionsChanged || apps) changed('phones');
     res.json({ ok: true });
   });
 
@@ -370,6 +406,42 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
     changed('phones');
     res.json({ ok: true });
   });
+
+  // ---------- เครื่องเงียบไปนาน (ปิดเครื่อง แบตหมด ไม่มีเน็ต หรือแอปถูกปิด) ----------
+  const silentPhones = db.prepare(`
+    SELECT * FROM phones
+    WHERE releasing = 0 AND last_seen_at < ? AND (silent_alerted_at IS NULL OR silent_alerted_at < last_seen_at)`);
+  const markSilentAlerted = db.prepare('UPDATE phones SET silent_alerted_at = ? WHERE id = ?');
+
+  /** แจ้งผู้ปกครองครั้งเดียวต่อช่วงที่เงียบ — เครื่องกลับมาส่งสัญญาณแล้วเงียบอีก ก็แจ้งใหม่ */
+  function checkSilent(now = Date.now()) {
+    const alerted = [];
+    for (const p of silentPhones.all(new Date(now - SILENT_MS).toISOString())) {
+      if (isPhoneOnline(p.id)) continue; // ยังต่อช่องสัญญาณสดอยู่ = แอปยังทำงาน
+      const kid = mustKid(p.kid_id);
+      markSilentAlerted.run(new Date(now).toISOString(), p.id);
+      push.notify(
+        { role: 'parent' },
+        {
+          title: `📵 ${kid.avatar} ${kid.name}: ${p.name} เงียบไปเกิน 1 ชม.`,
+          body: 'อาจปิดเครื่อง แบตหมด ไม่มีเน็ต หรือแอปล็อคจอถูกปิด',
+          url: '/parent/phones',
+          tag: `silent-${p.id}`,
+        },
+      );
+      alerted.push(p.id);
+    }
+    if (alerted.length) changed('phones');
+    return alerted;
+  }
+  const silentTimer = setInterval(() => {
+    try {
+      checkSilent();
+    } catch (err) {
+      console.error('silent check failed', err);
+    }
+  }, SILENT_CHECK_MS);
+  silentTimer.unref(); // ไม่ค้างโปรเซสตอนปิดเซิร์ฟเวอร์/จบเทสต์
 
   // ---------- โหมดผู้ปกครอง (ติดตั้งใน router /api/parent ของ app.js) ----------
   function mountParent(P) {
@@ -460,7 +532,7 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
       res.json({ days: list });
     });
 
-    // ปลดการควบคุม: เครื่องจะถอนสิทธิ์ Device Owner ของตัวเองแล้วแจ้งกลับ (ต้องออนไลน์) จากนั้นถอนการติดตั้งได้
+    // ปลดการควบคุม: เครื่องจะถอนสิทธิ์ผู้ดูแลของตัวเองแล้วแจ้งกลับ (ต้องออนไลน์) จากนั้นถอนการติดตั้งได้
     P.post('/phones/:id/release', (req, res) => {
       const phone = mustPhone(req.params.id);
       db.prepare('UPDATE phones SET releasing = 1 WHERE id = ?').run(phone.id);
@@ -525,6 +597,7 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
   return {
     phoneRouter: F,
     mountParent,
+    checkSilent,
     /** อนุมัติรางวัลหมวดเล่นโทรศัพท์ → เวลาเพิ่มวันนี้ */
     grantForRequest(request) {
       if (request.minutes) addGrant({ kidId: request.kid_id, minutes: request.minutes, source: 'reward', requestId: request.id });

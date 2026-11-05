@@ -115,6 +115,7 @@ export function createApp(db, { appUrl, distDir } = {}) {
   }
 
   const screen = createScreen({ db, push, changed, mustKid, mustReward, kidStars, createRequest });
+  Object.assign(app.locals, { push, screen }); // ให้เทสต์ดูการแจ้งเตือน / สั่งตรวจเครื่องเงียบเองได้
 
   function state() {
     return {

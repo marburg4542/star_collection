@@ -15,6 +15,11 @@ const LOCK = {
   tamper: { icon: '⚠️', text: 'สิทธิ์ในเครื่องถูกปิด ต้องให้ผู้ปกครองแก้' },
 };
 const GRANT_CHOICES = [15, 30, 60, 120];
+// สิทธิ์ที่ต้องมีเพื่อคุมเครื่องได้ (ตรงกับฝั่งเซิร์ฟเวอร์) — แบบ Device Owner ระบบกันส่วนอื่นไว้ให้แล้ว
+const REQUIRED = { owner: ['usage'], standard: ['admin', 'accessibility', 'usage'] };
+const PROTECTION_NAMES = { admin: 'ผู้ดูแลอุปกรณ์', accessibility: 'การช่วยเหลือพิเศษ', usage: 'สิทธิ์ดูการใช้งาน' };
+const MODE = { owner: '🛡️ แบบเข้ม', standard: '📲 แบบปกติ' };
+const SILENT_MS = 60 * 60 * 1000;
 
 export default function Phones() {
   const { data, changeTick, kidById } = useStore();
@@ -65,7 +70,7 @@ export default function Phones() {
       {byKid.length === 0 ? (
         <div className="card rounded-2xl">
           <Empty emoji="📱" title="ยังไม่มีมือถือที่จับคู่">
-            ติดตั้งแอป “ล็อคจอ” บนมือถือลูกและตั้งเป็น Device Owner ก่อน แล้วกด “เพิ่มมือถือ” เพื่อรับรหัสจับคู่
+            กด “เพิ่มมือถือ” แล้วทำตามขั้นตอน: ดาวน์โหลดแอป “ล็อคจอ” ลงมือถือลูก เปิดสิทธิ์ตามที่แอปขอ แล้วใส่รหัสจับคู่
           </Empty>
         </div>
       ) : (
@@ -194,6 +199,10 @@ function PhoneRow({ phone, today, onMenu, onChanged }) {
   const [busy, setBusy] = useState(false);
   const report = phone.report?.day === today ? phone.report : null;
   const lock = report?.lock ? LOCK[report.lock] : null;
+  // โหมดและสิทธิ์ใช้รายงานล่าสุดเสมอ (แม้เป็นของเมื่อวาน) · แอปรุ่นเก่าไม่ได้ส่งมา
+  const latest = phone.report;
+  const lost = latest?.mode && latest.protections ? REQUIRED[latest.mode].filter((k) => !latest.protections[k]) : [];
+  const silent = !phone.online && !phone.releasing && phone.lastSeenAt && Date.now() - Date.parse(phone.lastSeenAt) > SILENT_MS;
 
   async function toggleLock() {
     setBusy(true);
@@ -222,8 +231,11 @@ function PhoneRow({ phone, today, onMenu, onChanged }) {
             ) : phone.online ? (
               <span className="font-semibold text-good">● ออนไลน์</span>
             ) : (
-              `ออฟไลน์ · ล่าสุด ${phone.lastSeenAt ? `${dayLabel(phone.lastSeenAt)} ${timeOf(phone.lastSeenAt)}` : '-'}`
+              <span className={silent ? 'font-semibold text-bad' : undefined}>
+                {silent && '📵 '}ออฟไลน์ · ล่าสุด {phone.lastSeenAt ? `${dayLabel(phone.lastSeenAt)} ${timeOf(phone.lastSeenAt)}` : '-'}
+              </span>
             )}
+            {latest?.mode && ` · ${MODE[latest.mode]}`}
             {lock && ` · ${lock.icon} ${lock.text}`}
             {!lock && report?.remainingSec != null && ` · เหลือ ${duration(report.remainingSec)}`}
           </p>
@@ -235,6 +247,12 @@ function PhoneRow({ phone, today, onMenu, onChanged }) {
           ⋯
         </button>
       </div>
+      {lost.length > 0 && (
+        <p className="mt-1.5 rounded-xl bg-sunken px-3 py-2 text-[13px]">
+          <span className="font-semibold text-bad">⚠️ ถูกปิด: {lost.map((k) => PROTECTION_NAMES[k]).join(', ')}</span>
+          <span className="text-mute"> — ใส่ PIN บนเครื่อง → “ผู้ปกครอง” แล้วกดปุ่มเปิดคืน</span>
+        </p>
+      )}
       <LocationLine phone={phone} onChanged={onChanged} />
     </li>
   );
@@ -673,7 +691,7 @@ function PhoneMenu({ phone, onClose, onDone }) {
           onDone();
         }}
       >
-        {phone.name} จะเลิกนับเวลา เลิกล็อค และถอนสิทธิ์ Device Owner ของตัวเอง หลังจากนั้นถอนการติดตั้งแอปได้ตามปกติ (เครื่องต้องต่อเน็ตอยู่)
+        {phone.name} จะเลิกนับเวลา เลิกล็อค และถอนสิทธิ์ผู้ดูแลของตัวเอง หลังจากนั้นถอนการติดตั้งแอปได้ตามปกติ (เครื่องต้องต่อเน็ตอยู่)
       </Confirm>
       <Confirm
         open={view === 'remove'}
@@ -687,7 +705,7 @@ function PhoneMenu({ phone, onClose, onDone }) {
           onDone();
         }}
       >
-        ใช้เมื่อเครื่องหายหรือเสีย — ถ้าเครื่องยังใช้งานอยู่ แอปจะยังเป็น Device Owner แต่เลิกบังคับกติกา ถ้าจะเลิกใช้จริงให้เลือก “ยกเลิกการควบคุม” แทน
+        ใช้เมื่อเครื่องหายหรือเสีย — ถ้าเครื่องยังใช้งานอยู่ แอปจะยังถือสิทธิ์ผู้ดูแลแต่เลิกบังคับกติกา ถ้าจะเลิกใช้จริงให้เลือก “ยกเลิกการควบคุม” แทน
       </Confirm>
     </>
   );
@@ -696,8 +714,8 @@ function PhoneMenu({ phone, onClose, onDone }) {
 // ---------- จับคู่เครื่องใหม่ ----------
 
 const SETUP_METHODS = [
-  { value: 'qr', label: '📷 สแกน QR' },
-  { value: 'code', label: '🔢 รหัส 6 หลัก' },
+  { value: 'web', label: '📲 ติดตั้งจากเว็บ' },
+  { value: 'qr', label: '🛡️ แบบเข้ม (QR)' },
 ];
 
 /**
@@ -719,9 +737,10 @@ function provisioningQr(app, code) {
 function AddPhoneSheet({ open, onClose }) {
   const { data } = useStore();
   const [kidId, setKidId] = useState(null);
-  const [method, setMethod] = useState('qr');
+  const [method, setMethod] = useState('web');
   const [pair, setPair] = useState(null); // { code, expiresAt, qr? }
   const [app, setApp] = useState(undefined); // ไฟล์แอปบนเซิร์ฟเวอร์ (/kidlock/info.json) · null = ยังไม่มี
+  const [downloadQr, setDownloadQr] = useState(null); // QR ของลิงก์ดาวน์โหลดแอป ให้มือถือลูกสแกนจากจอนี้
   const [busy, setBusy] = useState(false);
   const [, tick] = useState(0);
 
@@ -741,6 +760,27 @@ function AddPhoneSheet({ open, onClose }) {
     const t = setInterval(() => tick((n) => n + 1), 1000);
     return () => clearInterval(t);
   }, [pair]);
+  const apkUrl = app ? new URL(app.apk, window.location.origin).href : null;
+  useEffect(() => {
+    if (!apkUrl) return;
+    let alive = true;
+    import('qrcode')
+      .then(({ default: QRCode }) => QRCode.toString(apkUrl, { type: 'svg', errorCorrectionLevel: 'M', margin: 2 }))
+      .then((svg) => alive && setDownloadQr(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`))
+      .catch(() => alive && setDownloadQr(null));
+    return () => {
+      alive = false;
+    };
+  }, [apkUrl]);
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(apkUrl);
+      toast.success('คัดลอกลิงก์แล้ว');
+    } catch {
+      toast.error('คัดลอกไม่ได้ — กดค้างที่ลิงก์เพื่อคัดลอกเอง');
+    }
+  }
 
   async function getCode() {
     setBusy(true);
@@ -800,14 +840,40 @@ function AddPhoneSheet({ open, onClose }) {
                 <li>หน้า “ยินดีต้อนรับ” แตะที่ว่างบนจอจุดเดิม 6 ครั้ง กล้องสแกน QR จะเปิด (ต่อ Wi‑Fi ถ้าเครื่องถาม)</li>
                 <li>เลือกชื่อลูก กด “สร้าง QR” แล้วสแกน</li>
               </ol>
-              <p className="mt-2 text-sm text-mute">เครื่องที่ใช้อยู่และไม่อยากล้าง ให้เลือก “รหัส 6 หลัก” (ต้องใช้คอม)</p>
+              <p className="mt-2 text-sm text-mute">
+                แบบนี้กันได้มากกว่า (กันล้างเครื่อง กันเซฟโหมด) แต่ต้องล้างเครื่อง — เครื่องที่ใช้อยู่แล้วเลือก “ติดตั้งจากเว็บ”
+              </p>
             </div>
           ) : (
-            <ol className="mb-4 list-decimal space-y-1 pl-5 text-[15px] text-mute">
-              <li>ติดตั้งแอป “ล็อคจอ” บนมือถือลูก แล้วตั้งเป็น Device Owner ด้วย ADB</li>
-              <li>เปิดแอป แล้วเปิดสิทธิ์ตามที่แอปขอ</li>
-              <li>กดปุ่มด้านล่างเพื่อรับรหัส แล้วใส่ในแอป</li>
-            </ol>
+            <div className="mb-4 rounded-2xl bg-sunken px-3 py-2.5 text-[15px]">
+              <p className="font-semibold">ใช้กับเครื่องที่ใช้อยู่ได้เลย ไม่ต้องล้างเครื่อง ไม่ต้องใช้คอม</p>
+              <ol className="mt-1 list-decimal space-y-1 pl-5 text-mute">
+                <li>
+                  บนมือถือลูก สแกน QR นี้ด้วยกล้อง (หรือเปิดลิงก์) เพื่อดาวน์โหลดแอป “ล็อคจอ”
+                  {app && (
+                    <span className="mt-2 flex items-center gap-3">
+                      {downloadQr && <img src={downloadQr} alt="QR ดาวน์โหลดแอปล็อคจอ" className="size-28 shrink-0 rounded-xl border-2 border-line bg-white" />}
+                      <span className="min-w-0 text-sm">
+                        <a href={apkUrl} className="block break-all font-semibold text-ink underline">
+                          {apkUrl}
+                        </a>
+                        <button type="button" className="btn btn-soft mt-1.5 min-h-9 px-3 text-sm" onClick={copyLink}>
+                          คัดลอกลิงก์
+                        </button>
+                      </span>
+                    </span>
+                  )}
+                </li>
+                <li>เปิดไฟล์ที่โหลดมาเพื่อติดตั้ง — ถ้าเครื่องถาม ให้อนุญาต “ติดตั้งแอปที่ไม่รู้จัก” ให้เบราว์เซอร์</li>
+                <li>
+                  เปิดแอป แล้วเปิดสิทธิ์ตามรายการในแอปให้ครบ: <b className="text-ink">ผู้ดูแลอุปกรณ์ · การช่วยเหลือพิเศษ · ดูการใช้งาน</b>
+                </li>
+                <li>เลือกชื่อลูกด้านล่าง กด “ขอรหัสจับคู่” แล้วใส่รหัสในแอป</li>
+              </ol>
+              <p className="mt-2 text-sm text-mute">
+                Android 13 ขึ้นไป: ถ้าสวิตช์ “การช่วยเหลือพิเศษ” กดไม่ได้ ให้เข้าหน้าข้อมูลแอป → ⋮ → “อนุญาตการตั้งค่าที่จำกัด” ก่อน (ในแอปมีปุ่มพาไป)
+              </p>
+            </div>
           )}
           <p className="label">มือถือของใคร</p>
           <div className="mb-4 flex flex-wrap gap-2">
@@ -823,7 +889,7 @@ function AddPhoneSheet({ open, onClose }) {
               </button>
             ))}
           </div>
-          {method === 'qr' && app === null && <p className="mb-2 text-sm text-bad">ยังไม่มีไฟล์แอปบนเซิร์ฟเวอร์ — ใช้ “รหัส 6 หลัก” ไปก่อน</p>}
+          {app === null && <p className="mb-2 text-sm text-bad">ยังไม่มีไฟล์แอปบนเซิร์ฟเวอร์ — ติดตั้งแอปเองแล้วใช้ “ขอรหัสจับคู่” ไปก่อน</p>}
           <button
             className="btn btn-primary w-full"
             onClick={getCode}
@@ -845,6 +911,8 @@ function AddPhoneSheet({ open, onClose }) {
           )}
           <p className="mt-4 rounded-2xl bg-sunken px-3 py-2.5 text-left text-sm text-mute">
             ที่อยู่เซิร์ฟเวอร์ในแอป: <span className="font-semibold text-ink">{window.location.origin}</span>
+            <br />
+            ตั้ง Device Owner ด้วย ADB เองก็ใช้รหัสนี้ได้เหมือนกัน
           </p>
         </div>
       )}

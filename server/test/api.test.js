@@ -5,9 +5,12 @@ import { createApp } from '../app.js';
 
 let server;
 let base;
+let app;
+let db;
 
 before(async () => {
-  const app = createApp(openDb(':memory:'), { appUrl: 'https://stars.example.test' });
+  db = openDb(':memory:');
+  app = createApp(db, { appUrl: 'https://stars.example.test' });
   await new Promise((resolve) => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
@@ -261,6 +264,43 @@ test('รายงานรายแอปย้อนหลัง และต�
   await phone.post('/api/phone/location', { lat: 13.7563309, lng: 100.5017651, accuracy: 18.4, at: '2026-11-03T10:00:00Z' });
   const p = (await mom.get('/api/parent/phones')).body.phones[0];
   assert.deepEqual(p.location, { lat: 13.756331, lng: 100.501765, accuracy: 18, at: '2026-11-03T10:00:00.000Z' });
+});
+
+test('แจ้งผู้ปกครองเมื่อสิทธิ์ที่จำเป็นถูกปิด หรือเครื่องเงียบเกิน 1 ชม.', async () => {
+  const sent = [];
+  const realNotify = app.locals.push.notify;
+  app.locals.push.notify = (target, payload) => sent.push({ target, payload });
+  try {
+    const day = (await phone.get('/api/phone/state')).body.day;
+    const all = { admin: true, accessibility: true, usage: true, notifications: true, location: false, battery: true };
+    const report = (protections, lock = null) => phone.post('/api/phone/report', { day, usedSec: 0, lock, mode: 'standard', protections });
+    await report(all);
+    await report({ ...all, battery: false });
+    assert.equal(sent.length, 0, 'สิทธิ์ที่ไม่บังคับหายไม่ต้องแจ้ง');
+    await report({ ...all, accessibility: false }, 'tamper');
+    await report({ ...all, accessibility: false }, 'tamper');
+    assert.equal(sent.length, 1, 'แจ้งครั้งเดียวตอนเพิ่งหาย');
+    assert.equal(sent[0].target.role, 'parent');
+    assert.match(sent[0].payload.title, /การช่วยเหลือพิเศษ/);
+    const p = (await mom.get('/api/parent/phones')).body.phones[0];
+    assert.equal(p.report.mode, 'standard');
+    assert.equal(p.report.protections.accessibility, false);
+
+    // เครื่องเงียบ: ย้อนเวลาที่เห็นล่าสุด แล้วสั่งตรวจด้วยเวลาที่กำหนดเอง
+    const { checkSilent } = app.locals.screen;
+    const T = Date.now();
+    const iso = (ms) => new Date(ms).toISOString();
+    assert.deepEqual(checkSilent(T), [], 'เพิ่งส่งรายงาน ยังไม่เงียบ');
+    db.prepare('UPDATE phones SET last_seen_at = ? WHERE id = ?').run(iso(T - 3 * 3_600_000), p.id);
+    assert.deepEqual(checkSilent(T - 3_600_000), [p.id]);
+    assert.match(sent.at(-1).payload.title, /เงียบไปเกิน 1 ชม/);
+    assert.deepEqual(checkSilent(T - 3_000_000), [], 'แจ้งครั้งเดียวต่อช่วงที่เงียบ');
+    await phone.get('/api/phone/state'); // เครื่องกลับมา
+    assert.deepEqual(checkSilent(T + 30 * 60_000), []);
+    assert.deepEqual(checkSilent(T + 61 * 60_000), [p.id], 'กลับมาแล้วเงียบอีก → แจ้งใหม่');
+  } finally {
+    app.locals.push.notify = realNotify;
+  }
 });
 
 test('ปลดการควบคุม: เครื่องยืนยันแล้วหายจากรายการ', async () => {
