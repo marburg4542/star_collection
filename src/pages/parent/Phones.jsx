@@ -276,12 +276,22 @@ function PhoneRow({ phone, today, appLatest, onMenu, onChanged }) {
         </p>
       )}
       {outdated && (
-        <p className="mt-1.5 rounded-xl bg-sunken px-3 py-2 text-[13px]">
-          <span className="font-semibold">
-            ⬆️ แอปล็อคจอยังเป็นรุ่น {latest.version} (มีรุ่น {appLatest} แล้ว)
-          </span>
-          <span className="text-mute"> — บนมือถือลูก ดาวน์โหลดจาก “+ เพิ่มมือถือ → 📲 ติดตั้งจากเว็บ” แล้วติดตั้งทับ ไม่ต้องจับคู่ใหม่</span>
-        </p>
+        <div className="mt-1.5 rounded-xl bg-sunken px-3 py-2 text-[13px]">
+          <p className="font-semibold">
+            ⬆️ แอปล็อคจอยังเป็นรุ่น {latest.version} (มีรุ่น {appLatest} แล้ว) — อัปเดตบนมือถือลูก:
+          </p>
+          <ol className="mt-1 list-decimal space-y-1 pl-5 text-mute">
+            {/* แบบปกติ แอปกันหน้าติดตั้งที่มีชื่อ “ล็อคจอ” (กันถอนแอป) — ต้องปลดก่อน ไม่งั้นขึ้น “หน้านี้ต้องให้ผู้ปกครองใส่ PIN…” */}
+            {latest.mode === 'standard' && (
+              <li>
+                เปิดแอปล็อคจอ → 🔒 ผู้ปกครอง → ใส่ PIN → กด <b className="text-ink">“ปลดการกัน 10 นาที”</b> แล้วทำข้อต่อไปให้เสร็จใน 10 นาที
+              </li>
+            )}
+            <li>ปิด Play Protect ชั่วคราว (Play Store → รูปโปรไฟล์ → Play Protect → ⚙️)</li>
+            <li>ดาวน์โหลดจาก “+ เพิ่มมือถือ → 📲 ติดตั้งจากเว็บ” แล้วติดตั้งทับ ไม่ต้องจับคู่ใหม่</li>
+            <li>เปิด Play Protect คืน</li>
+          </ol>
+        </div>
       )}
       <LocationLine phone={phone} onChanged={onChanged} />
     </li>
