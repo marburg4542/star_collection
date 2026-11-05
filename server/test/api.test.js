@@ -207,6 +207,17 @@ test('ตั้งกติกา รายงานเวลา และสั
   await phone.post('/api/phone/unlock'); // ผู้ปกครองใส่ PIN บนเครื่อง
   assert.equal((await phone.get('/api/phone/state')).body.phone.locked, false);
 
+  // แอป 2.4: ปลดบนเครื่องตอนไม่มีเน็ต แล้วส่งตามมาทีหลัง — ปลดเฉพาะล็อคที่เห็นตอนกด
+  await mom.post(`/api/parent/phones/${id}/lock`, { locked: true });
+  const seen = (await phone.get('/api/phone/state')).body.phone.lockChangedAt;
+  await new Promise((r) => setTimeout(r, 5));
+  await mom.post(`/api/parent/phones/${id}/lock`, { locked: true }); // ผู้ปกครองล็อคใหม่ระหว่างเครื่องออฟไลน์
+  assert.equal((await phone.post('/api/phone/unlock', { lockChangedAt: seen })).body.applied, false);
+  assert.equal((await phone.get('/api/phone/state')).body.phone.locked, true, 'ล็อคใหม่ไม่ถูกปลดโดยการปลดที่ส่งตามมา');
+  const now = (await phone.get('/api/phone/state')).body.phone.lockChangedAt;
+  assert.equal((await phone.post('/api/phone/unlock', { lockChangedAt: now })).body.applied, true);
+  assert.equal((await phone.get('/api/phone/state')).body.phone.locked, false);
+
   await mom.post(`/api/parent/kids/${kidA}/screen-pause`, { minutes: 60 });
   assert.ok((await phone.get('/api/phone/state')).body.pausedUntil);
   await mom.post(`/api/parent/kids/${kidA}/screen-pause`, { minutes: 0 });

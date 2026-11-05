@@ -1,6 +1,6 @@
 {
-  "version": "2.3",
-  "apk": "/kidlock/kidlock-2.3.apk",
+  "version": "2.4",
+  "apk": "/kidlock/kidlock-2.4.apk",
   "component": "site.personalproj.kidlock/.admin.KidLockAdminReceiver",
   "checksum": "Q-I54xZDjQSjArtJnVoP5YZr_Rze3ZRYmZYZTYaanQA"
 }

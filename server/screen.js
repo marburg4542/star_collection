@@ -364,10 +364,18 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
   });
 
   // ผู้ปกครองใส่ PIN บนเครื่องแล้วปลดล็อคที่สั่งไว้
+  // แอป 2.4+ แนบ lockChangedAt ของล็อคที่ปลด — กดตอนไม่มีเน็ตแล้วส่งตามมาทีหลัง ถ้าระหว่างนั้นผู้ปกครองสั่งล็อคใหม่ ไม่ปลดล็อคใหม่นั้น
+  // แอปรุ่นเก่าไม่แนบ → ปลดเลยเหมือนเดิม
   F.post('/unlock', (req, res) => {
+    const body = req.body ?? {};
+    if ('lockChangedAt' in body) {
+      const seen = body.lockChangedAt == null ? null : Date.parse(body.lockChangedAt);
+      const current = req.phone.lock_changed_at == null ? null : Date.parse(req.phone.lock_changed_at);
+      if (seen !== current) return res.json({ ok: true, applied: false });
+    }
     db.prepare('UPDATE phones SET locked = 0, lock_changed_at = ? WHERE id = ?').run(nowIso(), req.phone.id);
     poke(req.phone.kid_id);
-    res.json({ ok: true });
+    res.json({ ok: true, applied: true });
   });
 
   F.post('/time-requests', (req, res) => {
