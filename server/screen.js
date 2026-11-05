@@ -155,12 +155,17 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
     insertGrant: db.prepare(`
       INSERT OR IGNORE INTO screen_grants (kid_id, day, minutes, source, request_id, client_id)
       VALUES (@kidId, @day, @minutes, @source, @requestId, @clientId)`),
+    // นับเฉพาะเวลาที่ใช้หลังผู้ปกครองกดรีเซ็ตล่าสุด (reset_sec = ยอดของเครื่องนั้นตอนกด)
     usedByKid: db.prepare(`
-      SELECT COALESCE(SUM(u.used_sec), 0) AS v FROM screen_usage u JOIN phones p ON p.id = u.phone_id
+      SELECT COALESCE(SUM(MAX(0, u.used_sec - u.reset_sec)), 0) AS v FROM screen_usage u JOIN phones p ON p.id = u.phone_id
       WHERE p.kid_id = ? AND u.day = ?`),
+    // เครื่องคิดเวลาเหลือจาก "ยอดของตัวเองบนเครื่อง + ช่องนี้" — ส่งยอดตอนรีเซ็ตของตัวเองมาเป็นค่าลบ เครื่องจึงนับใหม่ได้โดยไม่ต้องอัปเดตแอป
     usedElsewhere: db.prepare(`
-      SELECT COALESCE(SUM(u.used_sec), 0) AS v FROM screen_usage u JOIN phones p ON p.id = u.phone_id
-      WHERE p.kid_id = ? AND u.day = ? AND u.phone_id <> ?`),
+      SELECT COALESCE(SUM(CASE WHEN u.phone_id = @phoneId THEN -u.reset_sec ELSE MAX(0, u.used_sec - u.reset_sec) END), 0) AS v
+      FROM screen_usage u JOIN phones p ON p.id = u.phone_id
+      WHERE p.kid_id = @kidId AND u.day = @day`),
+    resetUsage: db.prepare('UPDATE screen_usage SET reset_sec = used_sec WHERE day = ? AND phone_id IN (SELECT id FROM phones WHERE kid_id = ?)'),
+    clearGrants: db.prepare('DELETE FROM screen_grants WHERE kid_id = ? AND day = ?'),
     saveUsage: db.prepare(`
       INSERT INTO screen_usage (phone_id, day, used_sec) VALUES (?, ?, ?)
       ON CONFLICT(phone_id, day) DO UPDATE SET used_sec = MAX(used_sec, excluded.used_sec)`),
@@ -261,7 +266,7 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
       rules: rulesOf(kid.id),
       pausedUntil: s.rules.get(kid.id)?.paused_until ?? null,
       grantMinutes: s.grantSum.get(kid.id, day).v,
-      usedElsewhereSec: s.usedElsewhere.get(kid.id, day, phone.id).v,
+      usedElsewhereSec: s.usedElsewhere.get({ kidId: kid.id, day, phoneId: phone.id }).v,
       pinHash: getSetting(db, 'pin_hash'),
       rewards: s.screenRewards.all(),
       requests: s.kidScreenRequests.all(kid.id),
@@ -567,6 +572,18 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
     P.post('/kids/:id/screen-grants', (req, res) => {
       const kid = mustKid(req.params.id);
       addGrant({ kidId: kid.id, minutes: wholeNumber(req.body.minutes, 'จำนวนนาที', 600), source: 'parent' });
+      res.json({ ok: true });
+    });
+
+    // เริ่มนับเวลาวันนี้ใหม่: ใช้ไปกลับเป็น 0 และล้างเวลาพิเศษของวันนี้ทั้งหมด (รวมที่แลกดาวมา ดาวไม่คืน)
+    P.post('/kids/:id/screen-reset', (req, res) => {
+      const kid = mustKid(req.params.id);
+      const day = today();
+      db.transaction(() => {
+        s.resetUsage.run(day, kid.id);
+        s.clearGrants.run(kid.id, day);
+      })();
+      poke(kid.id);
       res.json({ ok: true });
     });
 

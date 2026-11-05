@@ -249,6 +249,26 @@ test('เวลาเพิ่ม: ขอจากเครื่อง, แล�
   assert.equal(await grantOf(), 55);
 });
 
+test('รีเซ็ตเวลาวันนี้: ใช้ไปกลับเป็น 0 และล้างเวลาพิเศษ', async () => {
+  const kidInfo = async () => (await mom.get('/api/parent/phones')).body.kids[kidA];
+  const before = await phone.get('/api/phone/state');
+  const used = (await kidInfo()).usedSec;
+  assert.ok(used > 0 && before.body.grantMinutes > 0);
+  assert.equal(before.body.usedElsewhereSec, 0);
+
+  assert.equal((await mom.post(`/api/parent/kids/${kidA}/screen-reset`)).status, 200);
+  assert.equal((await kidInfo()).usedSec, 0);
+  assert.equal((await kidInfo()).grantMinutes, 0);
+  const after = (await phone.get('/api/phone/state')).body;
+  assert.equal(after.grantMinutes, 0);
+  assert.equal(after.usedElsewhereSec, -used, 'เครื่องหักยอดตอนรีเซ็ตออกจากยอดบนเครื่องเอง');
+
+  await phone.post('/api/phone/report', { day: after.day, usedSec: used + 120 }); // เล่นต่ออีก 2 นาที
+  assert.equal((await kidInfo()).usedSec, 120);
+  assert.equal((await phone.get('/api/phone/state')).body.usedElsewhereSec, -used);
+  assert.equal((await kidPhone.post(`/api/parent/kids/${kidA}/screen-reset`)).status, 401, 'เด็กรีเซ็ตเองไม่ได้');
+});
+
 test('รายงานรายแอปย้อนหลัง และตำแหน่งล่าสุด', async () => {
   const day = (await phone.get('/api/phone/state')).body.day;
   const youtube = { pkg: 'com.google.android.youtube', label: 'YouTube' };

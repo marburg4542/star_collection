@@ -192,6 +192,11 @@ const MIGRATIONS = [
   (db) => {
     db.exec('ALTER TABLE phones ADD COLUMN silent_alerted_at TEXT;');
   },
+
+  // ผู้ปกครองกดรีเซ็ตเวลาวันนี้ — จำยอดที่เครื่องรายงานไว้ตอนกด แล้วนับเฉพาะส่วนที่ใช้ต่อจากนั้น
+  (db) => {
+    db.exec('ALTER TABLE screen_usage ADD COLUMN reset_sec INTEGER NOT NULL DEFAULT 0;');
+  },
 ];
 
 export function minutesFromName(name) {
