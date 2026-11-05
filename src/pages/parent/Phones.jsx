@@ -206,7 +206,7 @@ function KidCard({ kid, phones, info, today, appLatest, onChanged }) {
       </div>
 
       <ReportSheet open={sheet === 'report'} kid={kid} onClose={() => setSheet(null)} />
-      <GrantSheet open={sheet === 'grant'} kid={kid} onClose={() => setSheet(null)} onDone={onChanged} />
+      <GrantSheet open={sheet === 'grant'} kid={kid} usedSec={info.usedSec} limited={limit !== null} onClose={() => setSheet(null)} onDone={onChanged} />
       <PauseSheet open={sheet === 'pause'} kid={kid} paused={paused} onClose={() => setSheet(null)} onDone={onChanged} />
       <RulesSheet open={sheet === 'rules'} kid={kid} info={info} onClose={() => setSheet(null)} onDone={onChanged} />
       <PhoneMenu phone={sheet?.phone ?? null} onClose={() => setSheet(null)} onDone={onChanged} />
@@ -375,23 +375,30 @@ function useAction(onDone, onClose) {
   return [busy, run];
 }
 
-function GrantSheet({ open, kid, onClose, onDone }) {
+function GrantSheet({ open, kid, usedSec, limited, onClose, onDone }) {
   const [busy, run] = useAction(onDone, onClose);
+  const grant = (minutes, message) => run(() => api.post(`/api/parent/kids/${kid.id}/screen-grants`, { minutes }), message);
+  // "รีเซ็ต" = ให้เวลาพิเศษเท่าที่ใช้ไปวันนี้ — แอปบนเครื่องลูกทุกรุ่นรู้จักเวลาพิเศษอยู่แล้ว ไม่ต้องอัปเดตแอป
+  // ยอดใช้ไปมาจากรายงานล่าสุดของเครื่อง อาจช้ากว่าบนเครื่องไม่กี่นาที · เซิร์ฟเวอร์รับครั้งละไม่เกิน 600 นาที
+  const refund = limited ? Math.min(600, Math.round(usedSec / 60)) : 0; // ปัดแบบเดียวกับ “ใช้ไปวันนี้” บนการ์ด ตัวเลขจะได้ตรงกัน
   return (
     <Sheet open={open} onClose={onClose} title={`ให้${kid.name}เล่นเพิ่มวันนี้`}>
       <p className="mb-3 text-mute">เพิ่มจากเวลาที่ได้ตามกติกา ใช้ได้ถึงเที่ยงคืน (เวลานอนยังล็อคตามปกติ)</p>
       <div className="grid grid-cols-2 gap-2 pb-3">
         {GRANT_CHOICES.map((m) => (
-          <button
-            key={m}
-            className="btn btn-soft text-lg"
-            disabled={busy}
-            onClick={() => run(() => api.post(`/api/parent/kids/${kid.id}/screen-grants`, { minutes: m }), `ให้${kid.name}เล่นเพิ่ม ${duration(m * 60)}แล้ว`)}
-          >
+          <button key={m} className="btn btn-soft text-lg" disabled={busy} onClick={() => grant(m, `ให้${kid.name}เล่นเพิ่ม ${duration(m * 60)}แล้ว`)}>
             +{duration(m * 60)}
           </button>
         ))}
       </div>
+      {refund > 0 && (
+        <div className="border-t border-hair pt-3 pb-3">
+          <button className="btn btn-soft w-full" disabled={busy} onClick={() => grant(refund, `คืนเวลา ${duration(refund * 60)} ให้${kid.name}แล้ว`)}>
+            🔄 คืนเวลาที่ใช้ไปวันนี้ (+{duration(refund * 60)})
+          </button>
+          <p className="mt-1.5 text-[13px] text-mute">ให้เวลาพิเศษเท่ากับที่ใช้ไปแล้ว เหมือนเริ่มนับใหม่ — เช่น หลังทดสอบเครื่องหรือแก้กติกา</p>
+        </div>
+      )}
     </Sheet>
   );
 }
