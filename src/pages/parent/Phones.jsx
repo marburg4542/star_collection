@@ -1,6 +1,6 @@
 // มือถือของลูก: ดูเวลาที่ใช้วันนี้, ล็อค/ปลดล็อค, ให้เวลาเพิ่ม, ปิดกติกาชั่วคราว, ตั้งกติกา, จับคู่เครื่องใหม่
 // แอปบนมือถือลูก (ล็อคจอ) เป็นคนบังคับใช้ — หน้านี้แค่ส่งคำสั่งและแสดงสิ่งที่เครื่องรายงานมา
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api.js';
 import { useStore } from '../../lib/store.jsx';
@@ -20,6 +20,8 @@ const REQUIRED = { owner: ['usage'], standard: ['admin', 'accessibility', 'usage
 const PROTECTION_NAMES = { admin: 'ผู้ดูแลอุปกรณ์', accessibility: 'การช่วยเหลือพิเศษ', usage: 'สิทธิ์ดูการใช้งาน' };
 const MODE = { owner: '🛡️ แบบเข้ม', standard: '📲 แบบปกติ' };
 const SILENT_MS = 60 * 60 * 1000;
+// แผนที่ใช้ Leaflet (~150 KB) — โหลดเฉพาะตอนกดเปิด
+const FamilyMap = lazy(() => import('./FamilyMap.jsx'));
 
 /** a เก่ากว่า b ไหม — เทียบทีละส่วน (2.10 ใหม่กว่า 2.9) */
 function olderVersion(a, b) {
@@ -38,6 +40,7 @@ export default function Phones() {
   const [error, setError] = useState('');
   const [adding, setAdding] = useState(false);
   const [appLatest, setAppLatest] = useState(null); // รุ่นล่าสุดของแอปล็อคจอที่ให้ดาวน์โหลดจากเว็บนี้
+  const [mapOpen, setMapOpen] = useState(false);
 
   useEffect(() => {
     fetch('/kidlock/info.json', { cache: 'no-store' })
@@ -77,6 +80,17 @@ export default function Phones() {
           + เพิ่มมือถือ
         </button>
       </div>
+
+      {info.phones.some((p) => !p.releasing) && (
+        <button className="btn btn-soft mb-4 w-full" onClick={() => setMapOpen(true)}>
+          🗺️ ดูทุกคนบนแผนที่
+        </button>
+      )}
+      {mapOpen && (
+        <Suspense fallback={<div className="fixed inset-0 z-50 grid place-items-center bg-paper"><Spinner /></div>}>
+          <FamilyMap phones={info.phones} kids={data.kids} onClose={() => setMapOpen(false)} />
+        </Suspense>
+      )}
 
       {requests.length > 0 && (
         <ul className="mb-5 space-y-3">
