@@ -1,6 +1,7 @@
 // ข้อมูลกลางของแอป: สถานะการเข้าใช้, ข้อมูลครอบครัว (/api/state) และการฟังเหตุการณ์สดจากเซิร์ฟเวอร์
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api, getParentToken, onAuthLost, setParentToken } from './api.js';
+import { checkForUpdate } from './update.js';
 
 const StoreContext = createContext(null);
 
@@ -57,7 +58,10 @@ export function StoreProvider({ children }) {
     let closed = false;
     const connect = () => {
       es = new EventSource('/api/events');
-      es.onopen = () => refresh();
+      es.onopen = () => {
+        refresh();
+        checkForUpdate(); // deploy = รีสตาร์ทเซิร์ฟเวอร์ = สายหลุดแล้วต่อใหม่ — ถึงตอนนี้หน้าเว็บรุ่นใหม่ขึ้นแล้ว
+      };
       es.onmessage = (e) => {
         const msg = JSON.parse(e.data);
         if (msg.type === 'family-code') loadStatus();

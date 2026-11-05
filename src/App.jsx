@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { useStore } from './lib/store.jsx';
+import { useNewVersion } from './lib/update.js';
 import { Spinner, Star } from './components/ui.jsx';
 import Setup from './pages/Setup.jsx';
 import FamilyCode from './pages/FamilyCode.jsx';
@@ -33,8 +35,27 @@ export default function App() {
           error: { iconTheme: { primary: '#d93d63', secondary: '#ffffff' } },
         }}
       />
+      <UpdateBanner />
       <Screens />
     </>
+  );
+}
+
+/** แอปที่เปิดค้างไว้ตอนมีอัปเดต — ให้กดโหลดใหม่เอง ไม่โหลดให้อัตโนมัติ เผื่อกำลังกรอกอะไรค้างอยู่ */
+function UpdateBanner() {
+  const latest = useNewVersion();
+  const [dismissed, setDismissed] = useState(null);
+  if (!latest || latest === dismissed) return null;
+  return (
+    <div role="status" className="pad-top sticky top-0 z-40 flex items-center justify-center gap-3 bg-purple-600 px-4 pb-2 text-sm font-semibold text-white">
+      <span>✨ สะสมดาวมีรุ่นใหม่</span>
+      <button className="rounded-full bg-white px-3.5 py-1 text-purple-700" onClick={() => window.location.reload()}>
+        โหลดใหม่
+      </button>
+      <button className="-my-2 -mr-2 grid size-10 place-items-center text-base text-white/80" aria-label="ไว้ทีหลัง" onClick={() => setDismissed(latest)}>
+        ✕
+      </button>
+    </div>
   );
 }
 
