@@ -21,11 +21,30 @@ const PROTECTION_NAMES = { admin: 'ผู้ดูแลอุปกรณ์', 
 const MODE = { owner: '🛡️ แบบเข้ม', standard: '📲 แบบปกติ' };
 const SILENT_MS = 60 * 60 * 1000;
 
+/** a เก่ากว่า b ไหม — เทียบทีละส่วน (2.10 ใหม่กว่า 2.9) */
+function olderVersion(a, b) {
+  const pa = a.split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = b.split('.').map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff) return diff < 0;
+  }
+  return false;
+}
+
 export default function Phones() {
   const { data, changeTick, kidById } = useStore();
   const [info, setInfo] = useState(null);
   const [error, setError] = useState('');
   const [adding, setAdding] = useState(false);
+  const [appLatest, setAppLatest] = useState(null); // รุ่นล่าสุดของแอปล็อคจอที่ให้ดาวน์โหลดจากเว็บนี้
+
+  useEffect(() => {
+    fetch('/kidlock/info.json', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((app) => setAppLatest(app?.version ?? null))
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -76,7 +95,7 @@ export default function Phones() {
       ) : (
         <div className="space-y-4">
           {byKid.map(({ kid, phones }) => (
-            <KidCard key={kid.id} kid={kid} phones={phones} info={info.kids[kid.id]} today={info.today} onChanged={load} />
+            <KidCard key={kid.id} kid={kid} phones={phones} info={info.kids[kid.id]} today={info.today} appLatest={appLatest} onChanged={load} />
           ))}
         </div>
       )}
@@ -129,7 +148,7 @@ function TimeRequestCard({ request, kid, onDone }) {
 
 // ---------- การ์ดของเด็กแต่ละคน ----------
 
-function KidCard({ kid, phones, info, today, onChanged }) {
+function KidCard({ kid, phones, info, today, appLatest, onChanged }) {
   const [sheet, setSheet] = useState(null); // 'grant' | 'pause' | 'rules' | { phone }
   const rules = info.rules;
   const limit = rules.enabled ? rules.limits[todayType()] : null;
@@ -167,7 +186,7 @@ function KidCard({ kid, phones, info, today, onChanged }) {
 
       <ul className="mt-3 divide-y divide-hair">
         {phones.map((p) => (
-          <PhoneRow key={p.id} phone={p} today={today} onMenu={() => setSheet({ phone: p })} onChanged={onChanged} />
+          <PhoneRow key={p.id} phone={p} today={today} appLatest={appLatest} onMenu={() => setSheet({ phone: p })} onChanged={onChanged} />
         ))}
       </ul>
 
@@ -195,13 +214,15 @@ function KidCard({ kid, phones, info, today, onChanged }) {
   );
 }
 
-function PhoneRow({ phone, today, onMenu, onChanged }) {
+function PhoneRow({ phone, today, appLatest, onMenu, onChanged }) {
   const [busy, setBusy] = useState(false);
   const report = phone.report?.day === today ? phone.report : null;
   const lock = report?.lock ? LOCK[report.lock] : null;
-  // โหมดและสิทธิ์ใช้รายงานล่าสุดเสมอ (แม้เป็นของเมื่อวาน) · แอปรุ่นเก่าไม่ได้ส่งมา
+  // โหมด สิทธิ์ และรุ่นแอป ใช้รายงานล่าสุดเสมอ (แม้เป็นของเมื่อวาน) · แอปรุ่นเก่าไม่ได้ส่งมา
   const latest = phone.report;
   const lost = latest?.mode && latest.protections ? REQUIRED[latest.mode].filter((k) => !latest.protections[k]) : [];
+  // แอปในเครื่องไม่อัปเดตเอง — ต้องติดตั้งไฟล์รุ่นใหม่ทับบนเครื่องลูก
+  const outdated = !phone.releasing && latest?.version && appLatest && olderVersion(latest.version, appLatest);
   const silent = !phone.online && !phone.releasing && phone.lastSeenAt && Date.now() - Date.parse(phone.lastSeenAt) > SILENT_MS;
 
   async function toggleLock() {
@@ -236,6 +257,7 @@ function PhoneRow({ phone, today, onMenu, onChanged }) {
               </span>
             )}
             {latest?.mode && ` · ${MODE[latest.mode]}`}
+            {latest?.version && ` · แอป ${latest.version}`}
             {lock && ` · ${lock.icon} ${lock.text}`}
             {!lock && report?.remainingSec != null && ` · เหลือ ${duration(report.remainingSec)}`}
           </p>
@@ -251,6 +273,14 @@ function PhoneRow({ phone, today, onMenu, onChanged }) {
         <p className="mt-1.5 rounded-xl bg-sunken px-3 py-2 text-[13px]">
           <span className="font-semibold text-bad">⚠️ ถูกปิด: {lost.map((k) => PROTECTION_NAMES[k]).join(', ')}</span>
           <span className="text-mute"> — ใส่ PIN บนเครื่อง → “ผู้ปกครอง” แล้วกดปุ่มเปิดคืน</span>
+        </p>
+      )}
+      {outdated && (
+        <p className="mt-1.5 rounded-xl bg-sunken px-3 py-2 text-[13px]">
+          <span className="font-semibold">
+            ⬆️ แอปล็อคจอยังเป็นรุ่น {latest.version} (มีรุ่น {appLatest} แล้ว)
+          </span>
+          <span className="text-mute"> — บนมือถือลูก ดาวน์โหลดจาก “+ เพิ่มมือถือ → 📲 ติดตั้งจากเว็บ” แล้วติดตั้งทับ ไม่ต้องจับคู่ใหม่</span>
         </p>
       )}
       <LocationLine phone={phone} onChanged={onChanged} />
