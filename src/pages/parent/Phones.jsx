@@ -597,7 +597,9 @@ function RulesSheet({ open, kid, info, onClose, onDone }) {
 
         <div>
           <span className="label">แอปที่ใช้ได้เสมอ (ไม่นับเวลา ใช้ได้ตอนล็อค)</span>
-          <p className="mb-2 text-sm text-mute">โทรศัพท์และข้อความใช้ได้เสมออยู่แล้ว</p>
+          <p className="mb-2 text-sm text-mute">
+            รับสายเข้าได้เสมออยู่แล้ว — ถ้าอยากให้ลูกโทรออกหรือส่งข้อความตอนล็อค ให้ติ๊กแอปโทรศัพท์/ข้อความด้วย (แอป “ล็อคจอ” รุ่น 2.3 ขึ้นไป)
+          </p>
           {info.apps.length === 0 ? (
             <p className="rounded-2xl bg-sunken px-3 py-2.5 text-sm text-mute">ยังไม่มีรายชื่อแอป — เปิดมือถือลูกให้ต่อเน็ตสักครู่ แล้วเปิดหน้านี้ใหม่</p>
           ) : (
