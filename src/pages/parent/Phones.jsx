@@ -238,6 +238,8 @@ function PhoneRow({ phone, today, appLatest, onMenu, onChanged }) {
   // แอปในเครื่องไม่อัปเดตเอง — ต้องติดตั้งไฟล์รุ่นใหม่ทับบนเครื่องลูก
   const outdated = !phone.releasing && latest?.version && appLatest && olderVersion(latest.version, appLatest);
   const silent = !phone.online && !phone.releasing && phone.lastSeenAt && Date.now() - Date.parse(phone.lastSeenAt) > SILENT_MS;
+  // ยังจำกัดแบตเตอรี่อยู่ → มือถือบางยี่ห้อปิดแอปเองตอนเครื่องว่าง/รีสตาร์ท แล้วไม่มีอะไรล็อค (เจอกับ OPPO ของจริง)
+  const batteryLimited = !phone.releasing && latest?.protections && !latest.protections.battery;
 
   async function toggleLock() {
     setBusy(true);
@@ -288,6 +290,23 @@ function PhoneRow({ phone, today, appLatest, onMenu, onChanged }) {
           <span className="font-semibold text-bad">⚠️ ถูกปิด: {lost.map((k) => PROTECTION_NAMES[k]).join(', ')}</span>
           <span className="text-mute"> — ใส่ PIN บนเครื่อง → “ผู้ปกครอง” แล้วกดปุ่มเปิดคืน</span>
         </p>
+      )}
+      {batteryLimited && (
+        <div className="mt-1.5 rounded-xl bg-sunken px-3 py-2 text-[13px]">
+          <p className="font-semibold">
+            🔋 แอปล็อคจอยังถูกจำกัดแบตเตอรี่ — เครื่องอาจปิดแอปเองตอนว่างหรือรีสตาร์ท แล้วจะไม่ล็อคเลย (เจอบ่อยใน OPPO, realme, Xiaomi, vivo)
+          </p>
+          <ol className="mt-1 list-decimal space-y-1 pl-5 text-mute">
+            {latest.mode === 'standard' && (
+              <li>
+                เปิดแอปล็อคจอ → 🔒 ผู้ปกครอง → ใส่ PIN → <b className="text-ink">“เปิดหน้าตั้งค่าเครื่อง (ปลดการกัน 10 นาที)”</b>
+              </li>
+            )}
+            <li>ตั้งค่า → แอป → แอปล็อคจอ → แบตเตอรี่ → เลือก “ไม่จำกัด”</li>
+            <li>OPPO / realme: เปิด “อนุญาตให้ทำงานในเบื้องหลัง” และ “เริ่มอัตโนมัติ” ด้วย แล้วล็อคการ์ดแอปล็อคจอไว้ในหน้าแอปล่าสุด กัน “ล้างทั้งหมด”</li>
+            {latest.mode === 'standard' && <li>กลับมาที่แอปล็อคจอ → “▶️ เปิดกติกากลับ”</li>}
+          </ol>
+        </div>
       )}
       {outdated && (
         <div className="mt-1.5 rounded-xl bg-sunken px-3 py-2 text-[13px]">
