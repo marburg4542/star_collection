@@ -4,7 +4,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api.js';
 import { useStore } from '../../lib/store.jsx';
-import { ago, dayLabel, dayToDate, duration, minutesUntil, timeOf, todayType, weekdayShort } from '../../lib/format.js';
+import { ago, dayKey, dayLabel, dayToDate, duration, minutesUntil, timeOf, todayType, weekdayShort } from '../../lib/format.js';
 import { Avatar, Empty, Segmented, Sheet, Spinner } from '../../components/ui.jsx';
 import { Confirm } from '../../components/Feedback.jsx';
 
@@ -22,6 +22,9 @@ const MODE = { owner: '🛡️ แบบเข้ม', standard: '📲 แบบ
 const SILENT_MS = 60 * 60 * 1000;
 // แผนที่ใช้ Leaflet (~150 KB) — โหลดเฉพาะตอนกดเปิด
 const FamilyMap = lazy(() => import('./FamilyMap.jsx'));
+
+/** 🔋 64% · ⚡ ชาร์จอยู่ · 🪫 แบตใกล้หมด (แอป 2.5+ ส่งมากับรายงาน) */
+const batteryText = (b) => `${b.charging ? '⚡' : b.level <= 15 ? '🪫' : '🔋'} ${b.level}%`;
 
 /** a เก่ากว่า b ไหม — เทียบทีละส่วน (2.10 ใหม่กว่า 2.9) */
 function olderVersion(a, b) {
@@ -41,6 +44,7 @@ export default function Phones() {
   const [adding, setAdding] = useState(false);
   const [appLatest, setAppLatest] = useState(null); // รุ่นล่าสุดของแอปล็อคจอที่ให้ดาวน์โหลดจากเว็บนี้
   const [mapOpen, setMapOpen] = useState(false);
+  const [webOpen, setWebOpen] = useState(false);
 
   useEffect(() => {
     fetch('/kidlock/info.json', { cache: 'no-store' })
@@ -82,10 +86,16 @@ export default function Phones() {
       </div>
 
       {info.phones.some((p) => !p.releasing) && (
-        <button className="btn btn-soft mb-4 w-full" onClick={() => setMapOpen(true)}>
-          🗺️ ดูทุกคนบนแผนที่
-        </button>
+        <div className="mb-4 grid grid-cols-2 gap-2">
+          <button className="btn btn-soft whitespace-nowrap px-2 text-sm" onClick={() => setMapOpen(true)}>
+            🗺️ ดูทุกคนบนแผนที่
+          </button>
+          <button className="btn btn-soft whitespace-nowrap px-2 text-sm" onClick={() => setWebOpen(true)}>
+            🌐 บล็อคเว็บ/คำค้น
+          </button>
+        </div>
       )}
+      <WebBlockSheet open={webOpen} onClose={() => setWebOpen(false)} />
       {mapOpen && (
         <Suspense fallback={<div className="fixed inset-0 z-50 grid place-items-center bg-paper"><Spinner /></div>}>
           <FamilyMap phones={info.phones} kids={data.kids} onClose={() => setMapOpen(false)} />
@@ -219,7 +229,7 @@ function KidCard({ kid, phones, info, today, appLatest, onChanged }) {
         </button>
       </div>
 
-      <ReportSheet open={sheet === 'report'} kid={kid} onClose={() => setSheet(null)} />
+      <ReportSheet open={sheet === 'report'} kid={kid} rules={rules} onClose={() => setSheet(null)} />
       <GrantSheet open={sheet === 'grant'} kid={kid} info={info} limit={limit} onClose={() => setSheet(null)} onDone={onChanged} />
       <PauseSheet open={sheet === 'pause'} kid={kid} paused={paused} onClose={() => setSheet(null)} onDone={onChanged} />
       <RulesSheet open={sheet === 'rules'} kid={kid} info={info} onClose={() => setSheet(null)} onDone={onChanged} />
@@ -240,6 +250,7 @@ function PhoneRow({ phone, today, appLatest, onMenu, onChanged }) {
   const silent = !phone.online && !phone.releasing && phone.lastSeenAt && Date.now() - Date.parse(phone.lastSeenAt) > SILENT_MS;
   // ยังจำกัดแบตเตอรี่อยู่ → มือถือบางยี่ห้อปิดแอปเองตอนเครื่องว่าง/รีสตาร์ท แล้วไม่มีอะไรล็อค (เจอกับ OPPO ของจริง)
   const batteryLimited = !phone.releasing && latest?.protections && !latest.protections.battery;
+  const bat = latest?.battery; // แบตตอนส่งรายงานล่าสุด (เครื่องออฟไลน์ = ค่าก่อนหายไป)
 
   async function toggleLock() {
     setBusy(true);
@@ -274,6 +285,7 @@ function PhoneRow({ phone, today, appLatest, onMenu, onChanged }) {
             )}
             {latest?.mode && ` · ${MODE[latest.mode]}`}
             {latest?.version && ` · แอป ${latest.version}`}
+            {bat && !phone.releasing && ` · ${batteryText(bat)}`}
             {lock && ` · ${lock.icon} ${lock.text}`}
             {!lock && report?.remainingSec != null && ` · เหลือ ${duration(report.remainingSec)}`}
           </p>
@@ -285,6 +297,21 @@ function PhoneRow({ phone, today, appLatest, onMenu, onChanged }) {
           ⋯
         </button>
       </div>
+      {silent && bat && (
+        <p className="mt-1.5 rounded-xl bg-sunken px-3 py-2 text-[13px]">
+          {bat.level <= 5 && !bat.charging ? (
+            <>
+              <span className="font-semibold">🪫 น่าจะแบตหมด</span>
+              <span className="text-mute"> — แบตเหลือ {bat.level}% ตอนส่งรายงานล่าสุด ชาร์จแล้วเปิดเครื่อง และเปิดแอปล็อคจอดูว่าทำงานอยู่</span>
+            </>
+          ) : (
+            <>
+              <span className="font-semibold text-bad">📵 แบตยังเหลือ {bat.level}% แต่เครื่องเงียบไป</span>
+              <span className="text-mute"> — แอปล็อคจอน่าจะถูกปิด เครื่องรีสตาร์ท หรือไม่มีเน็ต · เปิดแอปล็อคจอบนเครื่องลูก</span>
+            </>
+          )}
+        </p>
+      )}
       {lost.length > 0 && (
         <p className="mt-1.5 rounded-xl bg-sunken px-3 py-2 text-[13px]">
           <span className="font-semibold text-bad">⚠️ ถูกปิด: {lost.map((k) => PROTECTION_NAMES[k]).join(', ')}</span>
@@ -492,22 +519,23 @@ function PauseSheet({ open, kid, paused, onClose, onDone }) {
 
 const TOP_APPS = 12;
 
-function ReportSheet({ open, kid, onClose }) {
-  const [days, setDays] = useState(null);
+function ReportSheet({ open, kid, rules, onClose }) {
+  const [report, setReport] = useState(null);
   const [error, setError] = useState('');
   const [index, setIndex] = useState(0); // 0 = วันนี้
 
   useEffect(() => {
     if (!open) return;
-    setDays(null);
+    setReport(null);
     setError('');
     setIndex(0);
     api
       .get(`/api/parent/kids/${kid.id}/app-usage?days=7`)
-      .then((r) => setDays(r.days))
+      .then(setReport)
       .catch((err) => setError(err.message));
   }, [open, kid.id]);
 
+  const days = report?.days;
   const day = days?.[index];
   const apps = day?.apps ?? [];
   const top = apps.slice(0, TOP_APPS);
@@ -527,6 +555,8 @@ function ReportSheet({ open, kid, onClose }) {
             <span className="font-bold tabular">{duration(day.totalSec)}</span>
           </div>
           <p className="text-[13px] text-mute">นับทุกแอปที่เปิดอยู่บนหน้าจอ รวมโทรศัพท์และแอปที่ใช้ได้เสมอ</p>
+
+          <DayTimeline day={day} rules={rules} today={index === 0} />
 
           {apps.length === 0 ? (
             <p className="mt-3 rounded-2xl bg-sunken px-3 py-4 text-center text-sm text-mute">
@@ -553,9 +583,202 @@ function ReportSheet({ open, kid, onClose }) {
               )}
             </ul>
           )}
+
+          <ActivityList
+            title="📲 ติดตั้ง / ลบแอป"
+            empty="ยังไม่มี — มือถือแจ้งเมื่อรายชื่อแอปเปลี่ยน (ผู้ปกครองได้แจ้งเตือนด้วย)"
+            items={report.appChanges.map((c) => ({
+              key: `${c.kind}-${c.pkg}-${c.at}`,
+              main: (
+                <>
+                  {c.kind === 'install' ? '📲 ติดตั้ง ' : '🗑️ ลบ '}
+                  <b>{c.label}</b>
+                </>
+              ),
+              at: c.at,
+            }))}
+          />
+          <ActivityList
+            title="🚫 เว็บและคำค้นที่ถูกบล็อค"
+            empty="ยังไม่มี — ตั้งรายการได้ที่ปุ่ม “🌐 บล็อคเว็บ/คำค้น” (แอปล็อคจอ 2.5 ขึ้นไป)"
+            items={report.webBlocks.map((w) => ({
+              key: `${w.at}-${w.matched}-${w.text}`,
+              main: (
+                <>
+                  {w.kind === 'search' ? (
+                    <>
+                      ค้นหา <b>“{w.text}”</b>
+                    </>
+                  ) : (
+                    <>
+                      เปิด <b className="break-all">{w.text}</b>
+                    </>
+                  )}
+                  {w.appLabel && <span className="text-mute"> ใน {w.appLabel}</span>}
+                  <span className="text-mute"> (ตรงกับ “{w.matched}”)</span>
+                </>
+              ),
+              at: w.at,
+            }))}
+          />
         </div>
       )}
     </Sheet>
+  );
+}
+
+const DAY_MIN = 1440;
+const minutesOf = (hhmm) => {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+};
+const nextDay = (day) => dayKey(new Date(dayToDate(day).getTime() + 86_400_000).toISOString());
+const isSchoolDay = (day) => ![0, 6].includes(dayToDate(day).getUTCDay());
+
+/**
+ * ช่วงเวลานอนในวันนั้น [[นาทีเริ่ม, นาทีจบ]] นับจากเที่ยงคืน — ตรงกับแอปบนเครื่อง:
+ * เลือกชุดกติกาตาม "วันที่ตื่น" (คืนก่อนวันเรียนใช้ชุดวันเรียน) · ใช้กติกาปัจจุบันกับวันย้อนหลังด้วย
+ */
+function bedtimeRanges(rules, day) {
+  if (!rules?.enabled) return [];
+  const night = (d) => (isSchoolDay(d) ? rules.bedtime.school : rules.bedtime.holiday);
+  const out = [];
+  const morning = night(day); // คืนที่ตื่นเช้าวันนี้
+  if (morning) {
+    const s = minutesOf(morning.start);
+    const e = minutesOf(morning.end);
+    out.push(s > e ? [0, e] : [s, e]);
+  }
+  const evening = night(nextDay(day)); // คืนนี้ (ตื่นพรุ่งนี้) — ส่วนก่อนเที่ยงคืน
+  if (evening) {
+    const s = minutesOf(evening.start);
+    const e = minutesOf(evening.end);
+    if (s > e) out.push([s, DAY_MIN]);
+  }
+  return out;
+}
+
+/** แบ่งช่วงที่ใช้เครื่องเป็นท่อนๆ ตามว่าอยู่ในเวลานอนไหม (นาทีจากเที่ยงคืน) */
+function splitByBedtime([a, b], beds) {
+  const cuts = [a, b, ...beds.flat().filter((x) => x > a && x < b)].sort((x, y) => x - y);
+  const parts = [];
+  for (let i = 0; i < cuts.length - 1; i++) {
+    const [s, e] = [cuts[i], cuts[i + 1]];
+    if (e > s) parts.push({ s, e, bed: beds.some(([bs, be]) => s >= bs && e <= be) });
+  }
+  return parts;
+}
+
+/** แถบ 24 ชม.: ช่วงที่ปลดล็อคใช้เครื่อง (ไม่นับตอนอยู่หน้าล็อค) · ใช้ช่วงเวลานอนเป็นสีแดง */
+function DayTimeline({ day, rules, today }) {
+  if (day.sessions === null) {
+    return (
+      <p className="mt-3 rounded-2xl bg-sunken px-3 py-3 text-[13px] text-mute">
+        ⏰ ช่วงเวลาที่ใช้เครื่องและจำนวนครั้งที่ปลดล็อคจอ ต้องใช้แอปล็อคจอรุ่น 2.5 ขึ้นไป
+      </p>
+    );
+  }
+  const dayStart = Date.parse(`${day.day}T00:00:00+07:00`);
+  const beds = bedtimeRanges(rules, day.day);
+  const parts = day.sessions
+    .map(([a, b]) => [Math.max(0, (a - dayStart) / 60_000), Math.min(DAY_MIN, (b - dayStart) / 60_000)])
+    .filter(([a, b]) => b > a)
+    .flatMap((r) => splitByBedtime(r, beds));
+  const bedMin = Math.round(parts.filter((x) => x.bed).reduce((sum, x) => sum + x.e - x.s, 0));
+  const first = day.sessions[0]?.[0];
+  const last = day.sessions.at(-1)?.[1];
+  const pct = (m) => `${(m / DAY_MIN) * 100}%`;
+  const iso = (ms) => new Date(ms).toISOString();
+
+  return (
+    <div className="mt-3 rounded-2xl bg-sunken px-3 pt-3 pb-2.5">
+      <p className="mb-2 text-[13px] font-semibold">⏰ ช่วงที่ปลดล็อคใช้เครื่อง</p>
+      <div
+        className="relative h-7 overflow-hidden rounded-lg border-2 border-line bg-card"
+        role="img"
+        aria-label={`ใช้เครื่อง ${day.sessions.length} ช่วง${bedMin ? ` ช่วงเวลานอน ${bedMin} นาที` : ''}`}
+      >
+        {beds.map(([a, b]) => (
+          <div key={`bed-${a}`} className="absolute inset-y-0 bg-indigo-200/70" style={{ left: pct(a), width: pct(b - a) }} />
+        ))}
+        {parts.map((x) => (
+          <div
+            key={`${x.s}-${x.e}`}
+            className={`absolute inset-y-1 rounded-[2px] ${x.bed ? 'bg-bad' : 'bg-purple-500'}`}
+            style={{ left: pct(x.s), width: `max(2px, ${pct(x.e - x.s)})` }}
+          />
+        ))}
+      </div>
+      <div className="mt-1 flex justify-between text-[11px] leading-none text-mute tabular" aria-hidden="true">
+        <span>00</span>
+        <span>06</span>
+        <span>12</span>
+        <span>18</span>
+        <span>24</span>
+      </div>
+      <p className="mt-2 text-[13px]">
+        {day.sessions.length === 0 ? (
+          <span className="text-mute">{today ? 'ยังไม่ได้ใช้เครื่องวันนี้' : 'ไม่ได้ใช้เครื่องวันนี้'}</span>
+        ) : (
+          <>
+            ใช้ครั้งแรก <b className="tabular">{timeOf(iso(first))}</b> · ล่าสุด <b className="tabular">{timeOf(iso(last))}</b> · ปลดล็อคจอ{' '}
+            <b className="tabular">{day.unlocks}</b> ครั้ง
+          </>
+        )}
+      </p>
+      {bedMin > 0 && (
+        <p className="mt-1 text-[13px] font-semibold text-bad">
+          😴 ใช้เครื่องช่วงเวลานอน {duration(bedMin * 60)}
+          <span className="font-normal text-mute"> (รวมรับสายและแอปที่ใช้ได้เสมอ)</span>
+        </p>
+      )}
+      <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-mute">
+        <span>
+          <i className="mr-1 inline-block size-2.5 rounded-[2px] bg-purple-500 align-middle" />
+          ใช้เครื่อง
+        </span>
+        <span>
+          <i className="mr-1 inline-block size-2.5 rounded-[2px] bg-bad align-middle" />
+          ใช้ช่วงเวลานอน
+        </span>
+        <span>
+          <i className="mr-1 inline-block size-2.5 rounded-[2px] bg-indigo-200 align-middle" />
+          เวลานอนตามกติกา
+        </span>
+      </p>
+    </div>
+  );
+}
+
+/** รายการย้อนหลัง 30 วัน ใหม่ → เก่า */
+function ActivityList({ title, empty, items }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? items : items.slice(0, 8);
+  return (
+    <section className="mt-5">
+      <h3 className="mb-1.5 font-bold">
+        {title} <span className="text-[13px] font-normal text-mute">· 30 วัน</span>
+      </h3>
+      {items.length === 0 ? (
+        <p className="rounded-2xl bg-sunken px-3 py-3 text-[13px] text-mute">{empty}</p>
+      ) : (
+        <>
+          <ul className="divide-y divide-hair rounded-2xl bg-sunken px-3">
+            {shown.map((x) => (
+              <li key={x.key} className="py-2 text-[14px]">
+                <span className="break-words">{x.main}</span>
+                <span className="block text-[12px] text-mute">{ago(x.at)}</span>
+              </li>
+            ))}
+          </ul>
+          {items.length > shown.length && (
+            <button type="button" className="mt-1.5 text-[13px] font-semibold text-purple-700 underline" onClick={() => setAll(true)}>
+              ดูทั้งหมด ({items.length})
+            </button>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 
@@ -589,6 +812,163 @@ function WeekBars({ days, index, onSelect }) {
         );
       })}
     </div>
+  );
+}
+
+// ---------- บล็อคเว็บและคำค้น (ใช้กับมือถือลูกทุกเครื่อง) ----------
+
+const SITE_HOST = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+/** "https://www.Example.com/x" → "example.com" (ตรงกับที่เซิร์ฟเวอร์จัดรูป) */
+function cleanSite(value) {
+  const s = value
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//, '')
+    .split(/[/?#]/)[0]
+    .replace(/:\d+$/, '')
+    .replace(/^www\./, '')
+    .replace(/\.$/, '');
+  return SITE_HOST.test(s) ? s : null;
+}
+const cleanWord = (value) => value.normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
+
+function ChipList({ items, onRemove, label }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? items : items.slice(0, 30);
+  if (!items.length) return <p className="rounded-2xl bg-sunken px-3 py-3 text-[13px] text-mute">ยังไม่มีรายการ</p>;
+  return (
+    <div>
+      <ul className="flex flex-wrap gap-1.5" aria-label={label}>
+        {shown.map((x) => (
+          <li key={x} className="chip-off inline-flex max-w-full items-center gap-1 rounded-full py-1 pr-1 pl-3 text-[14px]">
+            <span className="min-w-0 truncate">{x}</span>
+            <button type="button" className="grid size-7 shrink-0 place-items-center rounded-full text-mute" onClick={() => onRemove(x)} aria-label={`เอา ${x} ออก`}>
+              ✕
+            </button>
+          </li>
+        ))}
+      </ul>
+      {items.length > shown.length && (
+        <button type="button" className="mt-1.5 text-[13px] font-semibold text-purple-700 underline" onClick={() => setAll(true)}>
+          ดูทั้งหมด ({items.length})
+        </button>
+      )}
+    </div>
+  );
+}
+
+function WebBlockSheet({ open, onClose }) {
+  const [list, setList] = useState(null);
+  const [error, setError] = useState('');
+  const [site, setSite] = useState('');
+  const [word, setWord] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setList(null);
+    setError('');
+    api
+      .get('/api/parent/web-block')
+      .then(setList)
+      .catch((err) => setError(err.message));
+  }, [open]);
+
+  const set = (patch) => setList((l) => ({ ...l, ...patch }));
+  function addSite(e) {
+    e.preventDefault();
+    const s = cleanSite(site);
+    if (!s) return toast.error('ใส่ชื่อเว็บ เช่น example.com');
+    if (!list.sites.includes(s)) set({ sites: [s, ...list.sites] });
+    setSite('');
+  }
+  function addWord(e) {
+    e.preventDefault();
+    const w = cleanWord(word);
+    if (!w) return;
+    if (w.length > 40) return toast.error('คำยาวได้ไม่เกิน 40 ตัวอักษร');
+    if (!list.words.includes(w)) set({ words: [w, ...list.words] });
+    setWord('');
+  }
+  async function save() {
+    setBusy(true);
+    try {
+      await api.put('/api/parent/web-block', { enabled: list.enabled, sites: list.sites, words: list.words });
+      toast.success('บันทึกแล้ว — มือถือลูกได้รับทันทีที่ต่อเน็ต');
+      onClose();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const missing = list ? [...list.starter.sites.filter((x) => !list.sites.includes(x)), ...list.starter.words.filter((x) => !list.words.includes(x))] : [];
+
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="บล็อคเว็บและคำค้น"
+      footer={
+        list && (
+          <button className="btn btn-primary w-full text-lg" onClick={save} disabled={busy}>
+            บันทึก
+          </button>
+        )
+      }
+    >
+      {!list ? (
+        error ? <p className="py-8 text-center text-mute">{error}</p> : <Spinner />
+      ) : (
+        <div className="space-y-5 pb-3">
+          <p className="text-[13px] text-mute">
+            ใช้กับมือถือลูกทุกเครื่อง (แอปล็อคจอ 2.5 ขึ้นไป ที่เปิดการช่วยเหลือพิเศษ) — แอปดูช่องที่อยู่เว็บในเบราว์เซอร์และช่องค้นหาของ YouTube
+            ถ้าตรงกับรายการจะปิดหน้านั้นแล้วแจ้งผู้ปกครอง · กันได้ส่วนใหญ่ แต่ไม่ 100%
+          </p>
+          <label className="flex items-center justify-between gap-3 rounded-2xl bg-sunken px-4 py-3 font-semibold">
+            เปิดใช้การบล็อค
+            <input type="checkbox" className="size-6 accent-purple-600" checked={list.enabled} onChange={(e) => set({ enabled: e.target.checked })} />
+          </label>
+
+          <fieldset disabled={!list.enabled} className={`space-y-5 ${list.enabled ? '' : 'opacity-50'}`}>
+            <div>
+              <span className="label">เว็บที่บล็อค ({list.sites.length}) — รวมเว็บย่อยด้วย เช่น m.example.com</span>
+              <form onSubmit={addSite} className="mb-2 flex gap-2">
+                <input className="field" value={site} onChange={(e) => setSite(e.target.value)} placeholder="example.com" inputMode="url" autoCapitalize="off" aria-label="ชื่อเว็บที่จะบล็อค" />
+                <button className="btn btn-soft shrink-0 px-4">เพิ่ม</button>
+              </form>
+              <ChipList items={list.sites} label="เว็บที่บล็อค" onRemove={(x) => set({ sites: list.sites.filter((s) => s !== x) })} />
+            </div>
+
+            <div>
+              <span className="label">คำที่บล็อค ({list.words.length}) — ในช่องค้นหาและที่อยู่เว็บ</span>
+              <p className="mb-2 text-[13px] text-mute">คำภาษาอังกฤษ 3 ตัวอักษรหรือสั้นกว่าต้องตรงทั้งคำ (sex ไม่บล็อค sussex) · คำไทยบล็อคเมื่อมีคำนี้อยู่ในข้อความ จึงควรใช้วลีที่ชัดเจน</p>
+              <form onSubmit={addWord} className="mb-2 flex gap-2">
+                <input className="field" value={word} onChange={(e) => setWord(e.target.value)} placeholder="คำหรือวลี" autoCapitalize="off" aria-label="คำที่จะบล็อค" />
+                <button className="btn btn-soft shrink-0 px-4">เพิ่ม</button>
+              </form>
+              <ChipList items={list.words} label="คำที่บล็อค" onRemove={(x) => set({ words: list.words.filter((w) => w !== x) })} />
+            </div>
+
+            {missing.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-ghost w-full text-sm"
+                onClick={() =>
+                  set({
+                    sites: [...list.sites, ...list.starter.sites.filter((x) => !list.sites.includes(x))],
+                    words: [...list.words, ...list.starter.words.filter((x) => !list.words.includes(x))],
+                  })
+                }
+              >
+                ↩️ เพิ่มรายการเริ่มต้นที่ลบไปคืน ({missing.length})
+              </button>
+            )}
+          </fieldset>
+        </div>
+      )}
+    </Sheet>
   );
 }
 

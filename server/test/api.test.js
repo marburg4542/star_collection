@@ -2,6 +2,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDb } from '../db.js';
 import { createApp } from '../app.js';
+import { silentHint } from '../screen.js';
 
 let server;
 let base;
@@ -295,6 +296,84 @@ test('รายงานรายแอปย้อนหลัง และต�
   await phone.post('/api/phone/location', { lat: 13.7563309, lng: 100.5017651, accuracy: 18.4, at: '2026-11-03T10:00:00Z' });
   const p = (await mom.get('/api/parent/phones')).body.phones[0];
   assert.deepEqual(p.location, { lat: 13.756331, lng: 100.501765, accuracy: 18, at: '2026-11-03T10:00:00.000Z' });
+});
+
+test('แอป 2.5: แบต, แอปที่ติดตั้ง/ลบ, ช่วงเปิดจอ, บล็อคเว็บ', async () => {
+  const sent = [];
+  const realNotify = app.locals.push.notify;
+  app.locals.push.notify = (target, payload) => sent.push({ target, payload });
+  try {
+    const day = (await phone.get('/api/phone/state')).body.day;
+    const report = (extra) => phone.post('/api/phone/report', { day, usedSec: 0, ...extra });
+
+    await report({ battery: { level: 64, charging: false } });
+    assert.deepEqual((await mom.get('/api/parent/phones')).body.phones[0].report.battery, { level: 64, charging: false });
+    await report({ battery: { level: 140 } });
+    assert.equal((await mom.get('/api/parent/phones')).body.phones[0].report.battery, null, 'ค่าแปลกไม่เก็บ');
+
+    // แอปที่ติดตั้ง/ลบ: เทียบกับรายชื่อที่เครื่องส่งมาครั้งก่อน
+    const whatsapp = { pkg: 'com.whatsapp', label: 'WhatsApp' };
+    const tiktok = { pkg: 'com.zhiliaoapp.musically', label: 'TikTok' };
+    await report({ apps: [whatsapp] });
+    sent.length = 0;
+    await report({ apps: [whatsapp, tiktok] });
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].payload.title, /ติดตั้งแอปใหม่: TikTok/);
+    await report({ apps: [tiktok] });
+    assert.equal(sent.length, 2);
+    assert.match(sent[1].payload.title, /ลบแอป: WhatsApp/);
+    await report({});
+    assert.equal(sent.length, 2, 'ไม่ได้ส่งรายชื่อแอปมา = ไม่มีอะไรเปลี่ยน');
+
+    // ช่วงเปิดจอ + จำนวนครั้งที่ปลดล็อค
+    const t0 = Date.parse(`${day}T09:00:00+07:00`);
+    const sessions = [[t0, t0 + 600_000], [t0 + 610_000, t0 + 900_000], [t0 + 3_600_000, t0 + 3_700_000]];
+    await report({ appUsage: [{ day, apps: [], sessions, unlocks: 4 }] });
+    const usage = (await mom.get(`/api/parent/kids/${kidA}/app-usage?days=7`)).body;
+    assert.deepEqual(usage.days[0].sessions, [[t0, t0 + 900_000], [t0 + 3_600_000, t0 + 3_700_000]], 'ห่างไม่ถึง 30 วิ รวมเป็นช่วงเดียว');
+    assert.equal(usage.days[0].unlocks, 4);
+    assert.equal(usage.days[1].sessions, null, 'วันที่เครื่องไม่ได้ส่งช่วงเปิดจอ (แอปรุ่นเก่า)');
+    assert.deepEqual(usage.appChanges.map((c) => `${c.kind}:${c.label}`), ['remove:WhatsApp', 'install:TikTok']);
+
+    // รายการบล็อค: เริ่มจากรายการเริ่มต้น เครื่องได้รายการไปพร้อมสถานะ
+    const wb = (await mom.get('/api/parent/web-block')).body;
+    assert.equal(wb.enabled, true);
+    assert.ok(wb.sites.includes('pornhub.com') && wb.words.includes('หนังโป๊'));
+    assert.deepEqual(wb.starter.sites, wb.sites);
+    assert.deepEqual((await phone.get('/api/phone/state')).body.webBlock.words, wb.words);
+    assert.equal((await mom.put('/api/parent/web-block', { enabled: true, sites: ['not a site'], words: [] })).status, 400);
+    const saved = await mom.put('/api/parent/web-block', { enabled: true, sites: ['https://www.Bad-Site.com/x', 'bad-site.com'], words: [' Bad  Word ', ''] });
+    assert.equal(saved.status, 200);
+    assert.deepEqual((await phone.get('/api/phone/state')).body.webBlock, { enabled: true, sites: ['bad-site.com'], words: ['bad word'] });
+    assert.equal((await kidPhone.put('/api/parent/web-block', { enabled: false, sites: [], words: [] })).status, 401, 'เด็กแก้รายการเองไม่ได้');
+
+    // เครื่องแจ้งว่าปิดหน้าไปแล้ว → แจ้งผู้ปกครองครั้งเดียวต่อรายการใน 10 นาที
+    sent.length = 0;
+    const now = Date.now();
+    const site = (clientId, at) =>
+      phone.post('/api/phone/web-blocks', { clientId, kind: 'site', text: 'bad-site.com/page', matched: 'bad-site.com', app: 'com.android.chrome', at: new Date(at).toISOString() });
+    await site('w-1', now - 60_000);
+    await site('w-1', now - 60_000); // เน็ตกลับมาแล้วส่งซ้ำ
+    await site('w-2', now);
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].payload.title, /พยายามเปิดเว็บที่บล็อค ใน Chrome/);
+    await phone.post('/api/phone/web-blocks', { clientId: 'w-3', kind: 'search', text: 'bad word clip', matched: 'bad word', app: 'com.google.android.youtube' });
+    assert.equal(sent.length, 2);
+    assert.match(sent[1].payload.title, /ค้นหาคำที่บล็อค ใน YouTube/);
+    assert.equal((await phone.post('/api/phone/web-blocks', { kind: 'site', text: '' })).status, 400);
+    const blocks = (await mom.get(`/api/parent/kids/${kidA}/app-usage`)).body.webBlocks;
+    assert.deepEqual(blocks.map((b) => b.matched), ['bad word', 'bad-site.com', 'bad-site.com']);
+    assert.equal(blocks[0].appLabel, 'YouTube');
+  } finally {
+    app.locals.push.notify = realNotify;
+  }
+});
+
+test('ข้อความตอนเครื่องเงียบดูจากแบตในรายงานสุดท้าย', () => {
+  assert.match(silentHint(null), /อาจปิดเครื่อง/);
+  assert.match(silentHint({ battery: { level: 3, charging: false } }), /แบตล่าสุด 3% — น่าจะแบตหมด/);
+  assert.match(silentHint({ battery: { level: 3, charging: true } }), /แอปล็อคจออาจถูกปิด/);
+  assert.match(silentHint({ battery: { level: 64, charging: false } }), /แบตล่าสุด 64% — แอปล็อคจออาจถูกปิด/);
 });
 
 test('แจ้งผู้ปกครองเมื่อสิทธิ์ที่จำเป็นถูกปิด หรือเครื่องเงียบเกิน 1 ชม.', async () => {

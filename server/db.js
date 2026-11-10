@@ -197,6 +197,44 @@ const MIGRATIONS = [
   (db) => {
     db.exec('ALTER TABLE screen_usage ADD COLUMN reset_sec INTEGER NOT NULL DEFAULT 0;');
   },
+
+  // แอปล็อคจอ 2.5: ช่วงที่เปิดจอ, แอปที่ติดตั้ง/ลบ, เว็บที่ถูกบล็อค — เก็บย้อนหลัง 30 วัน
+  (db) => {
+    db.exec(`
+      -- ช่วงที่จอเปิดอยู่ต่อเครื่องต่อวัน (JSON [[เริ่ม, จบ], ...] เป็น epoch ms) + จำนวนครั้งที่ปลดล็อคจอ
+      CREATE TABLE screen_sessions (
+        phone_id INTEGER NOT NULL REFERENCES phones(id) ON DELETE CASCADE,
+        day TEXT NOT NULL,
+        sessions TEXT NOT NULL,
+        unlocks INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (phone_id, day)
+      );
+
+      -- แอปที่ติดตั้ง/ลบบนเครื่องลูก (เซิร์ฟเวอร์เทียบรายชื่อแอปที่เครื่องส่งมากับครั้งก่อน)
+      CREATE TABLE app_changes (
+        id INTEGER PRIMARY KEY,
+        phone_id INTEGER NOT NULL REFERENCES phones(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN ('install','remove')),
+        pkg TEXT NOT NULL,
+        label TEXT NOT NULL,
+        at TEXT NOT NULL DEFAULT ${NOW}
+      );
+      CREATE INDEX app_changes_phone_at ON app_changes(phone_id, at);
+
+      -- เว็บ/คำค้นที่แอปปิดไป · client_id กันเครื่องส่งรายการเดิมซ้ำตอนเน็ตกลับมา
+      CREATE TABLE web_blocks (
+        id INTEGER PRIMARY KEY,
+        phone_id INTEGER NOT NULL REFERENCES phones(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN ('site','search')),
+        text TEXT NOT NULL,
+        matched TEXT NOT NULL,
+        app TEXT,
+        client_id TEXT UNIQUE,
+        at TEXT NOT NULL
+      );
+      CREATE INDEX web_blocks_phone_at ON web_blocks(phone_id, at);
+    `);
+  },
 ];
 
 export function minutesFromName(name) {

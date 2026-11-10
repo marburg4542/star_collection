@@ -8,6 +8,7 @@ import { getSetting } from './db.js';
 import { guessLimiter } from './auth.js';
 import { isPhoneOnline, notifyPhones, phoneEventsHandler } from './events.js';
 import { HttpError, bad, text, wholeNumber } from './validate.js';
+import { STARTER_SITES, STARTER_WORDS, getWebBlock, readWebBlock, saveWebBlock } from './webblock.js';
 
 const TZ = 'Asia/Bangkok';
 const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -36,6 +37,8 @@ export const DEFAULT_RULES = {
 };
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+// ชื่อแอปที่รู้จัก เผื่อเครื่องยังไม่ได้ส่งรายชื่อแอปมา
+const KNOWN_APPS = { 'com.google.android.youtube': 'YouTube', 'com.android.chrome': 'Chrome' };
 const PKG = /^[A-Za-z][\w]*(\.[A-Za-z][\w]*)+$/;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -82,9 +85,32 @@ function readApps(list) {
   return list.slice(0, 400).filter(validApp).map((a) => ({ pkg: a.pkg, label: appLabel(a) }));
 }
 
+/** ช่วงเปิดจอ [[เริ่ม, จบ], ...] (epoch ms) เรียงตามเวลา — ช่วงที่ซ้อนกันหรือห่างกันไม่ถึง 30 วิ รวมเป็นช่วงเดียว */
+export function mergeSessions(list) {
+  const out = [];
+  for (const [a, b] of [...list].sort((x, y) => x[0] - y[0])) {
+    const last = out.at(-1);
+    if (last && a <= last[1] + 30_000) last[1] = Math.max(last[1], b);
+    else out.push([a, b]);
+  }
+  return out;
+}
+
+function readSessions(list) {
+  if (!Array.isArray(list)) return null;
+  const out = [];
+  for (const s of list.slice(0, 1000)) {
+    const a = Math.round(Number(s?.[0]));
+    const b = Math.round(Number(s?.[1]));
+    if (Number.isFinite(a) && Number.isFinite(b) && b > a) out.push([a, b]);
+  }
+  return mergeSessions(out);
+}
+
 /**
- * [{ day, apps: [{ pkg, label, sec }] }] — เวลาที่แต่ละแอปอยู่หน้าจอ
+ * [{ day, apps: [{ pkg, label, sec }], sessions?, unlocks? }] — เวลาที่แต่ละแอปอยู่หน้าจอ
  * เครื่องคำนวณยอดทั้งวันใหม่จากบันทึกของระบบทุกครั้ง จึงเขียนทับได้เลย (แก้ตัวเลขย้อนหลังได้ด้วย)
+ * แอป 2.5+ แนบช่วงที่เปิดจอ (sessions) และจำนวนครั้งที่ปลดล็อคจอ (unlocks) ของวันนั้นมาด้วย
  */
 function readAppUsage(list) {
   if (!Array.isArray(list)) return [];
@@ -97,7 +123,24 @@ function readAppUsage(list) {
         .slice(0, 400)
         .filter(validApp)
         .map((a) => ({ pkg: a.pkg, label: appLabel(a), sec: Math.max(0, Math.min(86_400, Math.round(Number(a.sec) || 0))) })),
+      sessions: readSessions(d.sessions),
+      unlocks: Number.isInteger(d.unlocks) && d.unlocks >= 0 ? Math.min(d.unlocks, 10_000) : 0,
     }));
+}
+
+/** แบตเตอรี่ตอนส่งรายงาน (แอป 2.5+) — ใช้แยก "แบตหมด" กับ "แอปถูกปิด" ตอนเครื่องเงียบไป */
+function readBattery(b) {
+  const level = Math.round(Number(b?.level));
+  if (!b || typeof b !== 'object' || !Number.isFinite(level) || level < 0 || level > 100) return null;
+  return { level, charging: b.charging === true };
+}
+
+/** ข้อความแจ้งผู้ปกครองตอนเครื่องเงียบ — ดูจากแบตในรายงานสุดท้ายก่อนหายไป */
+export function silentHint(report) {
+  const bat = report?.battery;
+  if (!bat) return 'อาจปิดเครื่อง แบตหมด ไม่มีเน็ต หรือแอปล็อคจอถูกปิด';
+  if (bat.level <= 5 && !bat.charging) return `แบตล่าสุด ${bat.level}% — น่าจะแบตหมด`;
+  return `แบตล่าสุด ${bat.level}% — แอปล็อคจออาจถูกปิด เครื่องรีสตาร์ท หรือไม่มีเน็ต ลองเปิดแอปล็อคจอบนเครื่องลูก`;
 }
 
 function readProtections(p) {
@@ -200,15 +243,63 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
       WHERE p.kid_id = ? AND a.day >= ?
       GROUP BY a.day, a.pkg
       ORDER BY a.day DESC, sec DESC`),
+    saveSessions: db.prepare(`
+      INSERT INTO screen_sessions (phone_id, day, sessions, unlocks) VALUES (?, ?, ?, ?)
+      ON CONFLICT(phone_id, day) DO UPDATE SET sessions = excluded.sessions, unlocks = excluded.unlocks`),
+    sessionsOfKid: db.prepare(`
+      SELECT s.day, s.sessions, s.unlocks FROM screen_sessions s JOIN phones p ON p.id = s.phone_id
+      WHERE p.kid_id = ? AND s.day >= ?`),
+    insertAppChange: db.prepare('INSERT INTO app_changes (phone_id, kind, pkg, label, at) VALUES (?, ?, ?, ?, ?)'),
+    appChangesOfKid: db.prepare(`
+      SELECT c.kind, c.pkg, c.label, c.at, p.name AS phone FROM app_changes c JOIN phones p ON p.id = c.phone_id
+      WHERE p.kid_id = ? AND c.at >= ? ORDER BY c.at DESC, c.id DESC LIMIT 100`),
+    insertWebBlock: db.prepare(`
+      INSERT OR IGNORE INTO web_blocks (phone_id, kind, text, matched, app, client_id, at)
+      VALUES (@phoneId, @kind, @text, @matched, @app, @clientId, @at)`),
+    // แจ้งผู้ปกครองครั้งเดียวต่อ "รายการที่ตรง" ใน 10 นาที — ลูกลองเปิดซ้ำๆ จะได้ไม่เด้งรัว
+    webBlockNearby: db.prepare(`
+      SELECT 1 FROM web_blocks WHERE phone_id = ? AND matched = ? AND id <> ? AND at > ? AND at <= ? LIMIT 1`),
+    webBlocksOfKid: db.prepare(`
+      SELECT w.kind, w.text, w.matched, w.app, w.at, p.id AS phoneId, p.name AS phone FROM web_blocks w JOIN phones p ON p.id = w.phone_id
+      WHERE p.kid_id = ? AND w.at >= ? ORDER BY w.at DESC, w.id DESC LIMIT 100`),
   };
 
-  // เก็บรายงานรายแอปย้อนหลัง 30 วัน — ล้างของเก่าวันละครั้ง
+  // เก็บรายงานรายแอป ช่วงเปิดจอ แอปที่ติดตั้ง/ลบ และเว็บที่บล็อค ย้อนหลัง 30 วัน — ล้างของเก่าวันละครั้ง
   let prunedDay = '';
   function pruneAppUsage() {
     const day = today();
     if (day === prunedDay) return;
     prunedDay = day;
-    db.prepare('DELETE FROM app_usage WHERE day < ?').run(dayFmt.format(new Date(Date.now() - 30 * 86_400_000)));
+    const cutoff = new Date(Date.now() - 30 * 86_400_000);
+    db.prepare('DELETE FROM app_usage WHERE day < ?').run(dayFmt.format(cutoff));
+    db.prepare('DELETE FROM screen_sessions WHERE day < ?').run(dayFmt.format(cutoff));
+    db.prepare('DELETE FROM app_changes WHERE at < ?').run(cutoff.toISOString());
+    db.prepare('DELETE FROM web_blocks WHERE at < ?').run(cutoff.toISOString());
+  }
+
+  /** ชื่อแอปที่คนอ่านเข้าใจ จากรายชื่อแอปที่เครื่องส่งมา */
+  const labelIn = (appsJson, pkg) => parse(appsJson, []).find((a) => a.pkg === pkg)?.label ?? KNOWN_APPS[pkg] ?? pkg;
+
+  /** เทียบรายชื่อแอปกับครั้งก่อน → บันทึกแอปที่ติดตั้ง/ลบ แล้วแจ้งผู้ปกครอง (ครั้งแรกที่ส่งมายังไม่มีอะไรให้เทียบ) */
+  function noteAppChanges(phone, before, after) {
+    if (!Array.isArray(before)) return;
+    const had = new Set(before.map((a) => a.pkg));
+    const has = new Set(after.map((a) => a.pkg));
+    const installed = after.filter((a) => !had.has(a.pkg));
+    const removed = before.filter((a) => !has.has(a.pkg));
+    if (!installed.length && !removed.length) return;
+    const at = nowIso();
+    db.transaction(() => {
+      for (const a of installed) s.insertAppChange.run(phone.id, 'install', a.pkg, a.label, at);
+      for (const a of removed) s.insertAppChange.run(phone.id, 'remove', a.pkg, a.label, at);
+    })();
+    pruneAppUsage();
+    const kid = mustKid(phone.kid_id);
+    const names = (list) => list.slice(0, 3).map((a) => a.label).join(', ') + (list.length > 3 ? ` และอีก ${list.length - 3} แอป` : '');
+    const note = (title) =>
+      push.notify({ role: 'parent' }, { title, body: `บน ${phone.name} · แตะเพื่อดูรายงานแอป`, url: '/parent/phones', tag: `apps-${phone.id}-${Date.now()}` });
+    if (installed.length) note(`📲 ${kid.avatar} ${kid.name} ติดตั้งแอปใหม่: ${names(installed)}`);
+    if (removed.length) note(`🗑️ ${kid.avatar} ${kid.name} ลบแอป: ${names(removed)}`);
   }
 
   const rulesOf = (kidId) => parse(s.rules.get(kidId)?.rules, DEFAULT_RULES);
@@ -268,6 +359,7 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
       grantMinutes: s.grantSum.get(kid.id, day).v,
       usedElsewhereSec: s.usedElsewhere.get({ kidId: kid.id, day, phoneId: phone.id }).v,
       pinHash: getSetting(db, 'pin_hash'),
+      webBlock: getWebBlock(db),
       rewards: s.screenRewards.all(),
       requests: s.kidScreenRequests.all(kid.id),
       timeRequests: s.kidTimeRequests.all(kid.id),
@@ -319,6 +411,7 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
       mode: MODES.includes(b.mode) ? b.mode : null,
       protections: readProtections(b.protections),
       version: String(b.version ?? '').slice(0, 20),
+      battery: readBattery(b.battery),
       at: nowIso(),
     };
     const prev = parse(req.phone.report);
@@ -339,15 +432,60 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
     const appUsage = readAppUsage(b.appUsage);
     if (appUsage.length) {
       db.transaction(() => {
-        for (const d of appUsage) for (const a of d.apps) s.saveAppUsage.run(req.phone.id, d.day, a.pkg, a.label, a.sec);
+        for (const d of appUsage) {
+          for (const a of d.apps) s.saveAppUsage.run(req.phone.id, d.day, a.pkg, a.label, a.sec);
+          if (d.sessions) s.saveSessions.run(req.phone.id, d.day, JSON.stringify(d.sessions), d.unlocks);
+        }
       })();
       pruneAppUsage();
     }
     const apps = readApps(b.apps);
+    if (apps) noteAppChanges(req.phone, parse(req.phone.apps), apps);
     if (apps) db.prepare('UPDATE phones SET report = ?, apps = ? WHERE id = ?').run(JSON.stringify(report), JSON.stringify(apps), req.phone.id);
     else db.prepare('UPDATE phones SET report = ? WHERE id = ?').run(JSON.stringify(report), req.phone.id);
     const protectionsChanged = JSON.stringify(prev?.protections ?? null) !== JSON.stringify(report.protections) || prev?.mode !== report.mode;
     if (!prev || prev.lock !== lock || prev.location !== report.location || protectionsChanged || apps) changed('phones');
+    res.json({ ok: true });
+  });
+
+  // แอปปิดเว็บหรือคำค้นที่อยู่ในรายการบล็อค (อาจเกิดตอนออฟไลน์ เครื่องส่งตามมาทีหลัง — client_id กันซ้ำ)
+  F.post('/web-blocks', (req, res) => {
+    const b = req.body ?? {};
+    const value = String(b.text ?? '').trim().slice(0, 300);
+    const matched = String(b.matched ?? '').trim().slice(0, 100);
+    if (!value || !matched) throw bad('ข้อมูลไม่ครบ');
+    const atMs = Date.parse(b.at ?? '');
+    const at = Number.isFinite(atMs) && atMs <= Date.now() + 60_000 ? new Date(atMs).toISOString() : nowIso();
+    const row = {
+      phoneId: req.phone.id,
+      kind: b.kind === 'search' ? 'search' : 'site',
+      text: value,
+      matched,
+      app: typeof b.app === 'string' && b.app.length <= 200 && PKG.test(b.app) ? b.app : null,
+      clientId: String(b.clientId ?? '').slice(0, 64) || null,
+      at,
+    };
+    const { changes, lastInsertRowid } = s.insertWebBlock.run(row);
+    if (changes) {
+      pruneAppUsage();
+      const since = new Date(Date.parse(at) - 10 * 60_000).toISOString();
+      if (!s.webBlockNearby.get(req.phone.id, matched, lastInsertRowid, since, at)) {
+        const kid = mustKid(req.phone.kid_id);
+        const where = row.app ? ` ใน ${labelIn(req.phone.apps, row.app)}` : '';
+        push.notify(
+          { role: 'parent' },
+          {
+            title:
+              row.kind === 'search'
+                ? `🚫 ${kid.avatar} ${kid.name} ค้นหาคำที่บล็อค${where}`
+                : `🚫 ${kid.avatar} ${kid.name} พยายามเปิดเว็บที่บล็อค${where}`,
+            body: `${row.kind === 'search' ? `“${value.slice(0, 80)}”` : value.slice(0, 120)} · แอปปิดหน้านั้นแล้ว`,
+            url: '/parent/phones',
+            tag: `web-${req.phone.id}-${lastInsertRowid}`,
+          },
+        );
+      }
+    }
     res.json({ ok: true });
   });
 
@@ -437,7 +575,7 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
         { role: 'parent' },
         {
           title: `📵 ${kid.avatar} ${kid.name}: ${p.name} เงียบไปเกิน 1 ชม.`,
-          body: 'อาจปิดเครื่อง แบตหมด ไม่มีเน็ต หรือแอปล็อคจอถูกปิด',
+          body: silentHint(parse(p.report)),
           url: '/parent/phones',
           tag: `silent-${p.id}`,
         },
@@ -526,6 +664,7 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
     });
 
     // รายงานเวลาใช้งานรายแอปของเด็ก รวมทุกเครื่อง ย้อนหลัง days วัน (รวมวันนี้)
+    // + ช่วงที่เปิดจอ/จำนวนครั้งที่ปลดล็อค (แอป 2.5+ · ไม่มีข้อมูล = sessions null) + แอปที่ติดตั้ง/ลบ + เว็บที่บล็อค (30 วัน)
     P.get('/kids/:id/app-usage', (req, res) => {
       const kid = mustKid(req.params.id);
       const days = Math.min(30, Math.max(1, Number(req.query.days) || 7));
@@ -537,12 +676,38 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
         d.apps.push({ pkg: row.pkg, label: row.label, sec: row.sec });
         byDay.set(row.day, d);
       }
+      const screen = new Map(); // day → { sessions, unlocks } รวมทุกเครื่องของเด็ก
+      for (const row of s.sessionsOfKid.all(kid.id, from)) {
+        const d = screen.get(row.day) ?? { sessions: [], unlocks: 0 };
+        d.sessions = mergeSessions([...d.sessions, ...parse(row.sessions, [])]);
+        d.unlocks += row.unlocks;
+        screen.set(row.day, d);
+      }
       const list = [];
       for (let i = 0; i < days; i++) {
         const day = dayFmt.format(new Date(Date.now() - i * 86_400_000));
-        list.push(byDay.get(day) ?? { day, totalSec: 0, apps: [] });
+        list.push({ ...(byDay.get(day) ?? { day, totalSec: 0, apps: [] }), ...(screen.get(day) ?? { sessions: null, unlocks: null }) });
       }
-      res.json({ days: list });
+      const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+      const appsOfPhone = new Map(s.phones.all().map((p) => [p.id, p.apps]));
+      res.json({
+        days: list,
+        appChanges: s.appChangesOfKid.all(kid.id, since),
+        webBlocks: s.webBlocksOfKid.all(kid.id, since).map(({ phoneId, ...w }) => ({
+          ...w,
+          appLabel: w.app ? labelIn(appsOfPhone.get(phoneId), w.app) : null,
+        })),
+      });
+    });
+
+    // รายการเว็บ/คำค้นที่บล็อค (ใช้กับมือถือลูกทุกเครื่อง) + รายการเริ่มต้นไว้กดเพิ่มคืน
+    P.get('/web-block', (req, res) => {
+      res.json({ ...getWebBlock(db), starter: { sites: STARTER_SITES, words: STARTER_WORDS } });
+    });
+    P.put('/web-block', (req, res) => {
+      saveWebBlock(db, readWebBlock(req.body));
+      poke(null);
+      res.json({ ok: true });
     });
 
     // ปลดการควบคุม: เครื่องจะถอนสิทธิ์ผู้ดูแลของตัวเองแล้วแจ้งกลับ (ต้องออนไลน์) จากนั้นถอนการติดตั้งได้
