@@ -506,6 +506,13 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
     res.json({ ok: true });
   });
 
+  // ผู้ปกครองใส่ PIN บนเครื่องแล้วกดล็อคเครื่องนี้ (แอป 2.6+)
+  F.post('/lock', (req, res) => {
+    db.prepare('UPDATE phones SET locked = 1, lock_changed_at = ? WHERE id = ?').run(nowIso(), req.phone.id);
+    poke(req.phone.kid_id);
+    res.json({ ok: true });
+  });
+
   // ผู้ปกครองใส่ PIN บนเครื่องแล้วปลดล็อคที่สั่งไว้
   // แอป 2.4+ แนบ lockChangedAt ของล็อคที่ปลด — กดตอนไม่มีเน็ตแล้วส่งตามมาทีหลัง ถ้าระหว่างนั้นผู้ปกครองสั่งล็อคใหม่ ไม่ปลดล็อคใหม่นั้น
   // แอปรุ่นเก่าไม่แนบ → ปลดเลยเหมือนเดิม

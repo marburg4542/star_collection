@@ -184,7 +184,7 @@ function Rewards({ kid, rewards, available }) {
               role="tab"
               aria-selected={cat === value}
               onClick={() => setCat(value)}
-              className={`flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-[15px] font-semibold ${cat === value ? 'bg-purple-600 text-white' : 'chip-off'}`}
+              className={`flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-[15px] font-semibold ${cat === value ? 'bg-purple-600 text-on-primary' : 'chip-off'}`}
             >
               <span className="text-lg">{emoji}</span>
               {label}

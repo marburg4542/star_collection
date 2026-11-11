@@ -143,7 +143,7 @@ function RejectSheet({ request, onClose }) {
       <p className="mb-3 text-mute">บอกเหตุผลให้เด็กรู้ (ไม่ใส่ก็ได้)</p>
       <div className="mb-3 flex flex-wrap gap-2">
         {REJECT_REASONS.map((r) => (
-          <button key={r} type="button" onClick={() => setNote(r)} className={`rounded-full px-3 py-1.5 text-sm ${note === r ? 'bg-purple-600 text-white' : 'bg-sunken'}`}>
+          <button key={r} type="button" onClick={() => setNote(r)} className={`rounded-full px-3 py-1.5 text-sm ${note === r ? 'bg-purple-600 text-on-primary' : 'bg-sunken'}`}>
             {r}
           </button>
         ))}
@@ -206,7 +206,7 @@ function RedeemSheet({ open, onClose }) {
             key={k.id}
             onClick={() => setKidId(k.id)}
             aria-pressed={kidId === k.id}
-            className={`flex items-center gap-2 rounded-full py-1 pl-1 pr-3 ${kidId === k.id ? 'bg-purple-600 text-white' : 'bg-sunken'}`}
+            className={`flex items-center gap-2 rounded-full py-1 pl-1 pr-3 ${kidId === k.id ? 'bg-purple-600 text-on-primary' : 'bg-sunken'}`}
           >
             <Avatar kid={k} size={32} />
             <span className="font-semibold">{k.name}</span>

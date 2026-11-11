@@ -50,6 +50,17 @@
   --color-kid-lavender: #b9a7ff;
   --color-kid-peach: #ffb57d;
 
+  /* ค่าที่เปลี่ยนตามธีม */
+  --color-scrim: #2b2238; /* ม่านหลังหน้าต่าง */
+  --color-on-accent: #2b2238; /* ตัวอักษรบนปุ่มหลัก */
+  --color-on-primary: #ffffff; /* ตัวอักษรบนรายการที่เลือกอยู่ */
+  --color-on-medal: #2b2238; /* ตัวเลขบนแท่นจัดอันดับ */
+  --color-night: #c7d2fe; /* ช่วงเวลานอนในแถบ 24 ชม. */
+  --color-silver-a: #f1edfa;
+  --color-silver-b: #cbbfe6;
+  --color-bronze-a: #ffd3ea;
+  --color-bronze-b: #ff9ccb;
+
   --animate-pop: pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
   --animate-rise: rise 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-shake: shake 0.4s ease both;
@@ -147,7 +158,7 @@
   }
   .btn-primary {
     background: linear-gradient(180deg, var(--color-pink-300), var(--color-pink-400));
-    color: var(--color-ink);
+    color: var(--color-on-accent);
     border: 2px solid var(--color-line);
     box-shadow: 0 4px 0 var(--color-line);
   }
@@ -241,4 +252,174 @@
 .family-map.leaflet-container {
   font: inherit;
   background: var(--color-sunken);
+}
+
+:root {
+  --toast-shadow: 0 3px 0 var(--color-line);
+  --toast-radius: 16px;
+}
+
+/* แผนที่: ป้ายข้อมูลใช้สีตามธีม */
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: var(--color-card);
+  color: var(--color-ink);
+}
+
+/*
+ * ธีม "มินิมอล": ขาวดำล้วน ไม่มีลาย ไม่มีเงา เส้นขอบบาง มุมมนนิดๆ มีโหมดสว่าง/มืด (ดาวยังเป็นสีทอง)
+ * เปลี่ยนสีผ่านตัวแปรเดิม คลาสในหน้าต่างๆ จึงเปลี่ยนตามเอง — ต้องอยู่นอก @layer เพื่อชนะค่าใน @theme
+ */
+:root[data-theme="minimal"] {
+  color-scheme: light;
+  --font-sans: "IBM Plex Sans Thai", system-ui, sans-serif;
+
+  --color-paper: #fafafa;
+  --color-card: #ffffff;
+  --color-sunken: #f2f2f2;
+  --color-soft: #ededed;
+  --color-hair: #e8e8e8;
+  --color-lilac: #d4d4d4;
+  --color-line: #dcdcdc;
+  --color-ink: #111111;
+  --color-mute: #6b6b6b;
+
+  --color-purple-300: #bdbdbd;
+  --color-purple-500: #111111;
+  --color-purple-600: #111111;
+  --color-purple-700: #111111;
+  --color-pink-50: #f5f5f5;
+  --color-pink-200: #e5e5e5;
+  --color-pink-300: #111111;
+  --color-pink-400: #111111;
+  --color-pink-500: #111111;
+
+  --color-good: #15803d;
+  --color-good-soft: #ecfdf3;
+  --color-bad: #dc2626;
+  --color-bad-soft: #fef2f2;
+  --color-light: #a16207;
+  --color-medium: #c2410c;
+  --color-severe: #dc2626;
+
+  --color-scrim: #000000;
+  --color-on-accent: #ffffff;
+  --color-on-primary: #ffffff;
+  --color-on-medal: #111111;
+  --color-night: #e5e5e5;
+  --color-silver-a: #cfcfcf;
+  --color-silver-b: #cfcfcf;
+  --color-bronze-a: #c49a73;
+  --color-bronze-b: #c49a73;
+
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --radius-2xl: 10px;
+  --radius-3xl: 12px;
+
+  --toast-shadow: none;
+  --toast-radius: 8px;
+}
+:root[data-theme="minimal"][data-mode="dark"] {
+  color-scheme: dark;
+
+  --color-paper: #0f0f0f;
+  --color-card: #181818;
+  --color-sunken: #222222;
+  --color-soft: #2a2a2a;
+  --color-hair: #2a2a2a;
+  --color-lilac: #444444;
+  --color-line: #333333;
+  --color-ink: #f2f2f2;
+  --color-mute: #a3a3a3;
+
+  --color-purple-300: #6b6b6b;
+  --color-purple-500: #f2f2f2;
+  --color-purple-600: #f2f2f2;
+  --color-purple-700: #f2f2f2;
+  --color-pink-50: #1c1c1c;
+  --color-pink-200: #333333;
+  --color-pink-300: #f2f2f2;
+  --color-pink-400: #f2f2f2;
+  --color-pink-500: #f2f2f2;
+
+  --color-good: #4ade80;
+  --color-good-soft: #0f2a1a;
+  --color-bad: #ef4444;
+  --color-bad-soft: #2c1214;
+  --color-light: #eab308;
+  --color-medium: #f97316;
+  --color-severe: #ef4444;
+
+  --color-on-accent: #111111;
+  --color-on-primary: #111111;
+  --color-night: #333333;
+}
+[data-theme="minimal"] body {
+  background-image: none;
+}
+[data-theme="minimal"] .card {
+  border-width: 1px;
+  border-color: var(--color-hair);
+  border-radius: 10px;
+  box-shadow: none;
+}
+[data-theme="minimal"] .btn {
+  border-radius: 8px;
+  font-weight: 500;
+}
+[data-theme="minimal"] .btn-primary {
+  background: var(--color-pink-400);
+  border: 0;
+  box-shadow: none;
+}
+[data-theme="minimal"] .btn-danger {
+  background: var(--color-bad-soft);
+  color: var(--color-bad);
+  border: 1px solid var(--color-bad);
+}
+[data-theme="minimal"] .field {
+  border-width: 1px;
+  border-radius: 8px;
+}
+[data-theme="minimal"] .label {
+  font-weight: 500;
+}
+[data-theme="minimal"] .font-bold {
+  font-weight: 600;
+}
+[data-theme="minimal"] .font-semibold {
+  font-weight: 500;
+}
+[data-theme="minimal"] .border-2 {
+  border-width: 1px;
+}
+[data-theme="minimal"] .rounded-full:not(.avatar) {
+  border-radius: 8px;
+}
+[data-theme="minimal"] [class*="shadow-["],
+[data-theme="minimal"] .shadow-xl {
+  box-shadow: none;
+}
+[data-theme="minimal"] .avatar {
+  background: var(--color-sunken) !important;
+  border-width: 1px !important;
+}
+[data-theme="minimal"] .update-btn {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+[data-theme="minimal"] .logo-bow {
+  display: none;
+}
+[data-theme="minimal"] .star-dim-a {
+  stop-color: #d4d4d4;
+}
+[data-theme="minimal"] .star-dim-b {
+  stop-color: #a3a3a3;
+}
+[data-theme="minimal"] .star-dim-line {
+  stroke: #8a8a8a;
 }

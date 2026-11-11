@@ -8,6 +8,7 @@ import { AVATARS, CATEGORIES, EARN_EMOJIS, KID_COLORS, PENALTY_EMOJIS, REWARD_EM
 import { duration } from '../../lib/format.js';
 import { Avatar, EmojiPicker, Segmented, Sheet, StarCount, Stepper } from '../../components/ui.jsx';
 import { Confirm } from '../../components/Feedback.jsx';
+import { MODES, THEMES, useTheme } from '../../lib/theme.js';
 
 const TABS = [
   { value: 'kids', label: 'เด็กๆ' },
@@ -394,7 +395,7 @@ function RewardEditor({ reward, onClose }) {
               key={key}
               onClick={() => setCategory(key)}
               aria-pressed={category === key}
-              className={`rounded-full px-3 py-1.5 text-[15px] font-semibold ${category === key ? 'bg-purple-600 text-white' : 'bg-sunken'}`}
+              className={`rounded-full px-3 py-1.5 text-[15px] font-semibold ${category === key ? 'bg-purple-600 text-on-primary' : 'bg-sunken'}`}
             >
               {c.emoji} {c.label}
             </button>
@@ -425,12 +426,20 @@ function RewardEditor({ reward, onClose }) {
 function SystemTab() {
   const { data, loadStatus } = useStore();
   const push = usePush({ role: 'parent' }, data.pushKey);
+  const { theme, mode, setTheme, setMode } = useTheme();
   const [pinOpen, setPinOpen] = useState(false);
   const [codeOpen, setCodeOpen] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
 
   return (
     <section className="space-y-3">
+      <div className="card rounded-2xl p-4">
+        <p className="font-bold">🎨 ธีมของแอป</p>
+        <p className="mt-1 text-sm text-mute">เลือกแยกแต่ละเครื่อง — เครื่องอื่นไม่เปลี่ยนตาม</p>
+        <Segmented className="mt-3" value={theme} onChange={setTheme} options={THEMES} />
+        {theme === 'minimal' && <Segmented className="mt-2" value={mode} onChange={setMode} options={MODES} />}
+      </div>
+
       <div className="card rounded-2xl p-4">
         <p className="font-bold">🔔 แจ้งเตือนเมื่อเด็กขอแลกรางวัล</p>
         <p className="mt-1 text-sm text-mute">เปิดบนเครื่องของผู้ปกครองแต่ละคน (เปิดได้หลายเครื่อง)</p>

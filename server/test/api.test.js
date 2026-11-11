@@ -219,6 +219,12 @@ test('ตั้งกติกา รายงานเวลา และสั
   assert.equal((await phone.post('/api/phone/unlock', { lockChangedAt: now })).body.applied, true);
   assert.equal((await phone.get('/api/phone/state')).body.phone.locked, false);
 
+  // แอป 2.6: ผู้ปกครองใส่ PIN แล้วกดล็อคจากบนเครื่อง
+  assert.equal((await phone.post('/api/phone/lock')).status, 200);
+  assert.equal((await phone.get('/api/phone/state')).body.phone.locked, true);
+  assert.equal((await mom.get('/api/parent/phones')).body.phones[0].locked, true, 'เว็บเห็นตรงกัน');
+  await phone.post('/api/phone/unlock');
+
   await mom.post(`/api/parent/kids/${kidA}/screen-pause`, { minutes: 60 });
   assert.ok((await phone.get('/api/phone/state')).body.pausedUntil);
   await mom.post(`/api/parent/kids/${kidA}/screen-pause`, { minutes: 0 });

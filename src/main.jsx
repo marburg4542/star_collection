@@ -4,9 +4,13 @@ import { BrowserRouter } from 'react-router-dom';
 import '@fontsource/mali/400.css';
 import '@fontsource/mali/600.css';
 import '@fontsource/mali/700.css';
+import '@fontsource/ibm-plex-sans-thai/400.css';
+import '@fontsource/ibm-plex-sans-thai/500.css';
+import '@fontsource/ibm-plex-sans-thai/600.css';
 import './index.css';
 import App from './App.jsx';
 import { StoreProvider } from './lib/store.jsx';
+import './lib/theme.js';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));

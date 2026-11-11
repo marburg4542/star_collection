@@ -23,11 +23,11 @@ export default function App() {
         containerStyle={{ top: 'max(env(safe-area-inset-top), 12px)' }}
         toastOptions={{
           style: {
-            background: '#ffffff',
-            color: '#2b2238',
-            border: '2px solid #2b2238',
-            boxShadow: '0 3px 0 #2b2238',
-            borderRadius: 16,
+            background: 'var(--color-card)',
+            color: 'var(--color-ink)',
+            border: '2px solid var(--color-line)',
+            boxShadow: 'var(--toast-shadow)',
+            borderRadius: 'var(--toast-radius)',
             fontFamily: 'inherit',
             fontWeight: 600,
           },
@@ -47,12 +47,12 @@ function UpdateBanner() {
   const [dismissed, setDismissed] = useState(null);
   if (!latest || latest === dismissed) return null;
   return (
-    <div role="status" className="pad-top sticky top-0 z-40 flex items-center justify-center gap-3 bg-purple-600 px-4 pb-2 text-sm font-semibold text-white">
+    <div role="status" className="pad-top sticky top-0 z-40 flex items-center justify-center gap-3 bg-purple-600 px-4 pb-2 text-sm font-semibold text-on-primary">
       <span>✨ สะสมดาวมีรุ่นใหม่</span>
-      <button className="rounded-full bg-white px-3.5 py-1 text-purple-700" onClick={() => window.location.reload()}>
+      <button className="update-btn rounded-full bg-white px-3.5 py-1 text-purple-700" onClick={() => window.location.reload()}>
         โหลดใหม่
       </button>
-      <button className="-my-2 -mr-2 grid size-10 place-items-center text-base text-white/80" aria-label="ไว้ทีหลัง" onClick={() => setDismissed(latest)}>
+      <button className="-my-2 -mr-2 grid size-10 place-items-center text-base text-on-primary/80" aria-label="ไว้ทีหลัง" onClick={() => setDismissed(latest)}>
         ✕
       </button>
     </div>

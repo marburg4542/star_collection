@@ -15,7 +15,7 @@ export function Celebration({ kid, items, onClose }) {
   const net = items.reduce((sum, t) => sum + t.amount, 0);
   const good = net >= 0;
   return createPortal(
-    <div className="fixed inset-0 z-50 grid place-items-center overflow-hidden bg-ink/50 p-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="ดาวใหม่">
+    <div className="fixed inset-0 z-50 grid place-items-center overflow-hidden bg-scrim/50 p-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="ดาวใหม่">
       <div className="card relative w-full max-w-sm px-5 pb-5 pt-6 text-center animate-pop">
         {good &&
           BURST.map((b, i) => (

@@ -52,6 +52,7 @@ function pinIcon(kid, stale, { size, named }, { dx, dy } = { dx: 0, dy: 0 }) {
   const el = document.createElement('div');
   el.style.cssText = `position:relative;width:${size}px;height:${size}px;opacity:${stale ? 0.55 : 1}`;
   const face = document.createElement('div');
+  face.className = 'avatar';
   const color = KID_COLORS[kid?.color]?.hex ?? '#6cc8ff';
   face.style.cssText = [
     `width:${size}px;height:${size}px;border-radius:9999px;display:grid;place-items:center;font-size:${Math.round(size * 0.56)}px;line-height:1`,

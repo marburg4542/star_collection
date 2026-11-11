@@ -287,7 +287,6 @@ function PhoneRow({ phone, today, appLatest, onMenu, onChanged }) {
             {latest?.version && ` · แอป ${latest.version}`}
             {bat && !phone.releasing && ` · ${batteryText(bat)}`}
             {lock && ` · ${lock.icon} ${lock.text}`}
-            {!lock && report?.remainingSec != null && ` · เหลือ ${duration(report.remainingSec)}`}
           </p>
         </div>
         <button className={`btn min-h-10 shrink-0 px-3 text-sm ${phone.locked ? 'btn-primary' : 'btn-soft'}`} onClick={toggleLock} disabled={busy || phone.releasing}>
@@ -326,7 +325,7 @@ function PhoneRow({ phone, today, appLatest, onMenu, onChanged }) {
           <ol className="mt-1 list-decimal space-y-1 pl-5 text-mute">
             {latest.mode === 'standard' && (
               <li>
-                เปิดแอปล็อคจอ → 🔒 ผู้ปกครอง → ใส่ PIN → <b className="text-ink">“เปิดหน้าตั้งค่าเครื่อง (ปลดการกัน 10 นาที)”</b>
+                เปิดแอปล็อคจอ → ใส่ PIN (ถ้ายังไม่ขึ้นแป้น กด 🔒 ผู้ปกครองก่อน) → <b className="text-ink">“เปิดหน้าตั้งค่าเครื่อง (ปลดการกัน 10 นาที)”</b>
               </li>
             )}
             <li>ตั้งค่า → แอป → แอปล็อคจอ → แบตเตอรี่ → เลือก “ไม่จำกัด”</li>
@@ -344,7 +343,7 @@ function PhoneRow({ phone, today, appLatest, onMenu, onChanged }) {
             {/* แบบปกติ แอปกันหน้าติดตั้งที่มีชื่อ “ล็อคจอ” (กันถอนแอป) — ต้องปลดก่อน ไม่งั้นขึ้น “หน้านี้ต้องให้ผู้ปกครองใส่ PIN…” */}
             {latest.mode === 'standard' && (
               <li>
-                เปิดแอปล็อคจอ → 🔒 ผู้ปกครอง → ใส่ PIN → กด <b className="text-ink">“ปลดการกัน 10 นาที”</b> แล้วทำข้อต่อไปให้เสร็จใน 10 นาที
+                เปิดแอปล็อคจอ → ใส่ PIN (ถ้ายังไม่ขึ้นแป้น กด 🔒 ผู้ปกครองก่อน) → กด <b className="text-ink">“ปลดการกัน 10 นาที”</b> แล้วทำข้อต่อไปให้เสร็จใน 10 นาที
               </li>
             )}
             <li>ปิด Play Protect ชั่วคราว (Play Store → รูปโปรไฟล์ → Play Protect → ⚙️)</li>
@@ -699,7 +698,7 @@ function DayTimeline({ day, rules, today }) {
         aria-label={`ใช้เครื่อง ${day.sessions.length} ช่วง${bedMin ? ` ช่วงเวลานอน ${bedMin} นาที` : ''}`}
       >
         {beds.map(([a, b]) => (
-          <div key={`bed-${a}`} className="absolute inset-y-0 bg-indigo-200/70" style={{ left: pct(a), width: pct(b - a) }} />
+          <div key={`bed-${a}`} className="absolute inset-y-0 bg-night/70" style={{ left: pct(a), width: pct(b - a) }} />
         ))}
         {parts.map((x) => (
           <div
@@ -742,7 +741,7 @@ function DayTimeline({ day, rules, today }) {
           ใช้ช่วงเวลานอน
         </span>
         <span>
-          <i className="mr-1 inline-block size-2.5 rounded-[2px] bg-indigo-200 align-middle" />
+          <i className="mr-1 inline-block size-2.5 rounded-[2px] bg-night align-middle" />
           เวลานอนตามกติกา
         </span>
       </p>
@@ -1362,7 +1361,7 @@ function AddPhoneSheet({ open, onClose }) {
                 key={k.id}
                 onClick={() => setKidId(k.id)}
                 aria-pressed={kidId === k.id}
-                className={`flex items-center gap-2 rounded-full py-1 pl-1 pr-3 ${kidId === k.id ? 'bg-purple-600 text-white' : 'bg-sunken'}`}
+                className={`flex items-center gap-2 rounded-full py-1 pl-1 pr-3 ${kidId === k.id ? 'bg-purple-600 text-on-primary' : 'bg-sunken'}`}
               >
                 <Avatar kid={k} size={32} />
                 <span className="font-semibold">{k.name}</span>

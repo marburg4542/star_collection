@@ -21,9 +21,16 @@ export function ModeSwitch({ mode, onKid, onParent, pending = 0 }) {
     place(from);
     let frame;
     if (from !== target) frame = requestAnimationFrame(() => requestAnimationFrame(() => place(target)));
-    // ฟอนต์ Mali โหลดเสร็จทีหลังได้ ความกว้างตัวอักษรเปลี่ยน — วัดใหม่อีกรอบ
-    document.fonts?.ready.then(() => place(target));
-    return () => cancelAnimationFrame(frame);
+    // ฟอนต์โหลดเสร็จทีหลังได้ หรือเปลี่ยนธีมแล้วฟอนต์เปลี่ยน ความกว้างตัวอักษรเปลี่ยน — วัดใหม่อีกรอบ
+    const again = () => place(target);
+    document.fonts?.ready.then(again);
+    document.fonts?.addEventListener('loadingdone', again);
+    window.addEventListener('stars-theme', again);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.fonts?.removeEventListener('loadingdone', again);
+      window.removeEventListener('stars-theme', again);
+    };
   }, [mode, parentOn]);
 
   const side = 'relative z-10 rounded-full px-2.5 py-2 text-sm font-bold whitespace-nowrap transition-colors duration-300';
@@ -36,10 +43,10 @@ export function ModeSwitch({ mode, onKid, onParent, pending = 0 }) {
           style={{ left: knob.left, width: knob.width }}
         />
       )}
-      <button ref={kidRef} type="button" role="radio" aria-checked={!parentOn} onClick={() => parentOn && onKid?.()} className={`${side} ${parentOn ? 'text-mute' : 'text-white'}`}>
+      <button ref={kidRef} type="button" role="radio" aria-checked={!parentOn} onClick={() => parentOn && onKid?.()} className={`${side} ${parentOn ? 'text-mute' : 'text-on-primary'}`}>
         เด็ก
       </button>
-      <button ref={parentRef} type="button" role="radio" aria-checked={parentOn} onClick={() => !parentOn && onParent?.()} className={`${side} ${parentOn ? 'text-ink' : 'text-mute'}`}>
+      <button ref={parentRef} type="button" role="radio" aria-checked={parentOn} onClick={() => !parentOn && onParent?.()} className={`${side} ${parentOn ? 'text-on-accent' : 'text-mute'}`}>
         {!parentOn && <span className="mr-1 text-xs">🔒</span>}
         ผู้ปกครอง
       </button>

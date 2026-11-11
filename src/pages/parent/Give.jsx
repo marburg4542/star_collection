@@ -76,12 +76,12 @@ export default function Give() {
                 key={k.id}
                 onClick={() => toggle(k.id)}
                 aria-pressed={on}
-                className={`flex shrink-0 items-center gap-2 rounded-full py-1.5 pl-1.5 pr-4 transition-colors ${on ? 'bg-purple-600 text-white' : 'chip-off'}`}
+                className={`flex shrink-0 items-center gap-2 rounded-full py-1.5 pl-1.5 pr-4 transition-colors ${on ? 'bg-purple-600 text-on-primary' : 'chip-off'}`}
               >
                 <Avatar kid={k} size={38} />
                 <span className="text-left leading-tight">
                   <span className="block font-bold">{k.name}</span>
-                  <span className={`block text-xs ${on ? 'text-white/80' : 'text-mute'}`}>⭐ {k.balance}</span>
+                  <span className={`block text-xs ${on ? 'text-on-primary/80' : 'text-mute'}`}>⭐ {k.balance}</span>
                 </span>
               </button>
             );

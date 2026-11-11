@@ -13,8 +13,8 @@ export function rankKids(kids, field) {
 
 const MEDAL = {
   1: { block: 'from-gold-300 to-gold-500', height: 'h-28', avatar: 76 },
-  2: { block: 'from-[#f1edfa] to-[#cbbfe6]', height: 'h-20', avatar: 62 },
-  3: { block: 'from-[#ffd3ea] to-[#ff9ccb]', height: 'h-14', avatar: 56 },
+  2: { block: 'from-silver-a to-silver-b', height: 'h-20', avatar: 62 },
+  3: { block: 'from-bronze-a to-bronze-b', height: 'h-14', avatar: 56 },
 };
 
 export function Podium({ kids, field }) {
@@ -38,7 +38,7 @@ export function Podium({ kids, field }) {
               <span className="mb-1 max-w-full truncate text-center text-[15px] font-bold">{kid.name}</span>
               <StarCount value={score} size={18} className="mb-2 text-lg" />
               <div className={`grid w-full place-items-center rounded-t-2xl border-2 border-b-0 border-line bg-gradient-to-b ${m.block} ${m.height}`}>
-                <span className="text-3xl font-bold text-ink">{rank}</span>
+                <span className="text-3xl font-bold text-on-medal">{rank}</span>
               </div>
             </Link>
           );

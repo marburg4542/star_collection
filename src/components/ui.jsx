@@ -16,12 +16,12 @@ export function Star({ size = 24, className = '', dim = false }) {
     <svg width={size} height={size} viewBox="0 0 24 24" className={`inline-block shrink-0 ${className}`} aria-hidden="true">
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor={dim ? '#e4d9f5' : '#ffeaa0'} />
-          <stop offset="1" stopColor={dim ? '#bba8e0' : '#ffb21a'} />
+          <stop offset="0" className={dim ? 'star-dim-a' : undefined} stopColor={dim ? '#e4d9f5' : '#ffeaa0'} />
+          <stop offset="1" className={dim ? 'star-dim-b' : undefined} stopColor={dim ? '#bba8e0' : '#ffb21a'} />
         </linearGradient>
       </defs>
       <g transform={STAR_FIT}>
-        <path d={STAR_PATH} fill="none" stroke={dim ? '#8e80a8' : 'var(--color-line)'} strokeWidth="3.6" strokeLinejoin="round" />
+        <path d={STAR_PATH} className={dim ? 'star-dim-line' : undefined} fill="none" stroke={dim ? '#8e80a8' : 'var(--color-line)'} strokeWidth="3.6" strokeLinejoin="round" />
         <path d={STAR_PATH} fill={`url(#${id})`} stroke={`url(#${id})`} strokeWidth="1.2" strokeLinejoin="round" />
       </g>
     </svg>
@@ -33,7 +33,7 @@ export function Logo({ size = 36, className = '' }) {
   return (
     <span className={`relative inline-block shrink-0 ${className}`} style={{ width: size, height: size }} aria-hidden="true">
       <Star size={size} />
-      <svg viewBox="-8 -5 16 10" width={size * 0.5} height={size * 0.31} className="absolute" style={{ left: size * 0.25, top: -size * 0.02, transform: 'rotate(-14deg)' }}>
+      <svg viewBox="-8 -5 16 10" width={size * 0.5} height={size * 0.31} className="logo-bow absolute" style={{ left: size * 0.25, top: -size * 0.02, transform: 'rotate(-14deg)' }}>
         <path d="M0 0L-6.5-4v8zM0 0l6.5-4v8z" fill="#ff8cc6" stroke="var(--color-line)" strokeWidth="1.3" strokeLinejoin="round" />
         <circle r="1.9" fill="#f45ba8" stroke="var(--color-line)" strokeWidth="1.1" />
       </svg>
@@ -55,7 +55,7 @@ export function Avatar({ kid, size = 56, ring = false, className = '' }) {
   const color = KID_COLORS[kid?.color]?.hex ?? '#6cc8ff';
   return (
     <span
-      className={`inline-grid shrink-0 place-items-center rounded-full ${className}`}
+      className={`avatar inline-grid shrink-0 place-items-center rounded-full ${className}`}
       style={{
         width: size,
         height: size,
@@ -81,7 +81,7 @@ export function Segmented({ value, onChange, options, className = '' }) {
           aria-selected={value === o.value}
           onClick={() => onChange(o.value)}
           className={`flex-1 rounded-full px-3 py-2 text-[15px] font-bold transition-colors ${
-            value === o.value ? 'bg-purple-600 text-white' : 'text-mute'
+            value === o.value ? 'bg-purple-600 text-on-primary' : 'text-mute'
           }`}
         >
           {o.label}
@@ -116,7 +116,7 @@ export function Sheet({ open, onClose, title, children, footer }) {
   if (!open) return null;
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="absolute inset-0 bg-ink/45 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="absolute inset-0 bg-scrim/45 backdrop-blur-[2px]" onClick={onClose} />
       <div
         ref={panel}
         tabIndex={-1}
