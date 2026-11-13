@@ -20,13 +20,16 @@ const PAIR_QR_TTL_MS = 30 * 60 * 1000;
 export const TIME_REQUEST_MINUTES = [15, 30, 60];
 const LOCK_REASONS = ['manual', 'bedtime', 'limit', 'tamper'];
 const MODES = ['owner', 'standard'];
-const PROTECTIONS = ['admin', 'accessibility', 'usage', 'notifications', 'location', 'battery'];
+const PROTECTIONS = ['admin', 'accessibility', 'usage', 'notifications', 'location', 'battery', 'installer'];
 // สิทธิ์ที่ถ้าหายไปแปลว่าคุมเครื่องไม่ได้แล้ว → แจ้งผู้ปกครอง (แบบ Device Owner ระบบกันส่วนอื่นไว้ให้แล้ว)
 const REQUIRED = { owner: ['usage'], standard: ['admin', 'accessibility', 'usage'] };
 const PROTECTION_NAMES = { admin: 'ผู้ดูแลอุปกรณ์', accessibility: 'การช่วยเหลือพิเศษ', usage: 'สิทธิ์ดูการใช้งาน' };
 // เครื่องส่งสัญญาณทุกนาทีตอนเปิดใช้ และทุก ~20 นาทีตอนหลับ — เงียบเกินนี้แจ้งผู้ปกครอง
 export const SILENT_MS = 60 * 60 * 1000;
 const SILENT_CHECK_MS = 5 * 60 * 1000;
+// ไม่ได้ติดต่อเลยนานเกินนี้ = "หายไป" (ตอนเครื่องหลับยังส่งสัญญาณทุก ~20 นาที)
+const GAP_MS = 30 * 60 * 1000;
+const UPDATE_STATES = ['downloading', 'waiting', 'failed'];
 
 // วันเรียน = จันทร์–ศุกร์ · เวลานอนแยกตาม "พรุ่งนี้เป็นวันเรียนไหม" (ตัดสินฝั่งเครื่อง)
 export const DEFAULT_RULES = {
@@ -44,6 +47,65 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const nowIso = () => new Date().toISOString();
+const clockFmt = new Intl.DateTimeFormat('th-TH', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
+const isoOrNull = (v) => (typeof v === 'string' && Number.isFinite(Date.parse(v)) ? new Date(v).toISOString() : null);
+const intOrNull = (v) => (Number.isInteger(v) && v >= 0 ? v : null);
+
+function minutesText(ms) {
+  const m = Math.max(1, Math.round(ms / 60_000));
+  if (m < 60) return `${m} นาที`;
+  const h = Math.floor(m / 60);
+  return m % 60 ? `${h} ชม. ${m % 60} นาที` : `${h} ชม.`;
+}
+
+/**
+ * เครื่องกลับมาแล้ว — ดูจากรายงานก่อนหน้ากับรายงานนี้ (แอป 2.7+ ส่ง bootCount/pid มา):
+ * นับการเปิดเครื่องเปลี่ยน = รีสตาร์ท/ปิดเครื่อง (แบตล่าสุด ≤ 5% = แบตหมด) · เลขโปรเซสแอปเปลี่ยน = แอปถูกปิด
+ * ไม่เปลี่ยนทั้งคู่แต่หายไปนาน = แอปทำงานอยู่ตลอด แค่ติดต่อไม่ได้ (ไม่มีเน็ต)
+ * gapFrom = ติดต่อครั้งสุดท้ายก่อนหายไป (null = ไม่ได้หายไปนาน)
+ */
+export function classifyReturn(prev, report, gapFrom, silentMs = SILENT_MS) {
+  if (!prev?.at || report.bootCount == null) return null;
+  const silentFrom = gapFrom ?? prev.at;
+  const away = Date.parse(report.at) - Date.parse(silentFrom);
+  const rebooted = prev.bootCount != null && prev.bootCount !== report.bootCount;
+  const appRestarted = prev.pid != null && report.pid != null && prev.pid !== report.pid && prev.version === report.version;
+  let kind = null;
+  if (rebooted) kind = prev.battery && prev.battery.level <= 5 && !prev.battery.charging ? 'battery' : 'restart';
+  else if (appRestarted && away >= 10 * 60_000) kind = 'app';
+  else if (gapFrom && away >= silentMs) kind = 'offline';
+  if (!kind) return null;
+  return {
+    kind,
+    silentFrom,
+    backAt: report.at,
+    bootAt: report.bootAt,
+    appStartAt: report.appStartAt,
+    battery: prev.battery?.level ?? null,
+  };
+}
+
+/** สาเหตุเป็นประโยคสั้นๆ (ใช้ทั้งแจ้งเตือนและหน้าเว็บ) */
+export function returnSummary(e) {
+  const at = (iso) => (iso ? clockFmt.format(new Date(iso)) : '?');
+  const lateApp = e.appStartAt && e.bootAt && Date.parse(e.appStartAt) - Date.parse(e.bootAt) > 5 * 60_000;
+  const app = lateApp ? ` แต่แอปเพิ่งเริ่มทำงาน ${at(e.appStartAt)} (เครื่องไม่เปิดแอปให้เอง — ตั้ง “เริ่มอัตโนมัติ”)` : '';
+  switch (e.kind) {
+    case 'battery':
+      return `🪫 แบตหมด — เปิดเครื่องใหม่ ${at(e.bootAt)}${app}`;
+    case 'restart':
+      return `🔄 เครื่องปิดหรือรีสตาร์ท — เปิดเครื่องใหม่ ${at(e.bootAt)}${app}`;
+    case 'app':
+      return `⛔ แอปล็อคจอถูกปิด — กลับมาทำงาน ${at(e.appStartAt)}`;
+    default:
+      return '📶 ไม่มีเน็ต — แอปยังทำงานอยู่ตลอด';
+  }
+}
+
+function readUpdate(u) {
+  if (!u || typeof u !== 'object' || !UPDATE_STATES.includes(u.state)) return null;
+  return { state: u.state, version: String(u.version ?? '').slice(0, 20), message: String(u.message ?? '').slice(0, 200), at: isoOrNull(u.at) ?? nowIso() };
+}
 
 function minutesOrNull(value, label) {
   if (value === null || value === undefined || value === '') return null;
@@ -259,6 +321,13 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
     // แจ้งผู้ปกครองครั้งเดียวต่อ "รายการที่ตรง" ใน 10 นาที — ลูกลองเปิดซ้ำๆ จะได้ไม่เด้งรัว
     webBlockNearby: db.prepare(`
       SELECT 1 FROM web_blocks WHERE phone_id = ? AND matched = ? AND id <> ? AND at > ? AND at <= ? LIMIT 1`),
+    insertPhoneEvent: db.prepare(`
+      INSERT INTO phone_events (phone_id, kind, silent_from, back_at, boot_at, app_start_at, battery)
+      VALUES (@phoneId, @kind, @silentFrom, @backAt, @bootAt, @appStartAt, @battery)`),
+    lastPhoneEvent: db.prepare('SELECT * FROM phone_events WHERE phone_id = ? AND back_at >= ? ORDER BY back_at DESC, id DESC LIMIT 1'),
+    phoneEventsOfKid: db.prepare(`
+      SELECT e.*, p.name AS phone FROM phone_events e JOIN phones p ON p.id = e.phone_id
+      WHERE p.kid_id = ? AND e.back_at >= ? ORDER BY e.back_at DESC, e.id DESC LIMIT 100`),
     webBlocksOfKid: db.prepare(`
       SELECT w.kind, w.text, w.matched, w.app, w.at, p.id AS phoneId, p.name AS phone FROM web_blocks w JOIN phones p ON p.id = w.phone_id
       WHERE p.kid_id = ? AND w.at >= ? ORDER BY w.at DESC, w.id DESC LIMIT 100`),
@@ -275,7 +344,18 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
     db.prepare('DELETE FROM screen_sessions WHERE day < ?').run(dayFmt.format(cutoff));
     db.prepare('DELETE FROM app_changes WHERE at < ?').run(cutoff.toISOString());
     db.prepare('DELETE FROM web_blocks WHERE at < ?').run(cutoff.toISOString());
+    db.prepare('DELETE FROM phone_events WHERE back_at < ?').run(cutoff.toISOString());
   }
+
+  const eventJson = (e) => ({
+    kind: e.kind,
+    silentFrom: e.silent_from,
+    backAt: e.back_at,
+    bootAt: e.boot_at,
+    appStartAt: e.app_start_at,
+    battery: e.battery,
+    summary: returnSummary({ kind: e.kind, bootAt: e.boot_at, appStartAt: e.app_start_at }),
+  });
 
   /** ชื่อแอปที่คนอ่านเข้าใจ จากรายชื่อแอปที่เครื่องส่งมา */
   const labelIn = (appsJson, pkg) => parse(appsJson, []).find((a) => a.pkg === pkg)?.label ?? KNOWN_APPS[pkg] ?? pkg;
@@ -334,6 +414,11 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
     const m = /^Bearer (.+)$/.exec(req.get('authorization') ?? '');
     const phone = m && s.phoneByToken.get(sha256(m[1]));
     if (!phone) return res.status(401).json({ error: 'phone', message: 'เครื่องนี้ยังไม่ได้จับคู่' });
+    // ติดต่อครั้งแรกหลังหายไปนาน → จำจุดเริ่มเงียบไว้ รายงานถัดไปจะบอกสาเหตุ
+    if (!phone.gap_from && phone.last_seen_at && Date.now() - Date.parse(phone.last_seen_at) >= GAP_MS) {
+      db.prepare('UPDATE phones SET gap_from = ? WHERE id = ?').run(phone.last_seen_at, phone.id);
+      phone.gap_from = phone.last_seen_at;
+    }
     s.touch.run(nowIso(), phone.id);
     req.phone = phone;
     next();
@@ -352,6 +437,7 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
         lockChangedAt: phone.lock_changed_at,
         releasing: !!phone.releasing,
         locateRequestedAt: phone.locate_requested_at,
+        updateRequestedAt: phone.update_requested_at,
       },
       kid: { id: kid.id, name: kid.name, avatar: kid.avatar, balance: stars.balance, available: stars.available },
       rules: rulesOf(kid.id),
@@ -412,6 +498,12 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
       protections: readProtections(b.protections),
       version: String(b.version ?? '').slice(0, 20),
       battery: readBattery(b.battery),
+      // แอป 2.7+: นับการเปิดเครื่อง + เลขโปรเซสของแอป ใช้บอกว่าเครื่องรีสตาร์ทหรือแอปถูกปิด
+      bootCount: intOrNull(b.bootCount),
+      bootAt: isoOrNull(b.bootAt),
+      pid: intOrNull(b.pid),
+      appStartAt: isoOrNull(b.appStartAt),
+      update: readUpdate(b.update),
       at: nowIso(),
     };
     const prev = parse(req.phone.report);
@@ -428,6 +520,26 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
         },
       );
     }
+    const back = classifyReturn(prev, report, req.phone.gap_from);
+    if (back) {
+      s.insertPhoneEvent.run({ phoneId: req.phone.id, ...back });
+      pruneAppUsage();
+      // เคยแจ้งผู้ปกครองว่า "เงียบเกิน 1 ชม." ไปแล้ว → แจ้งว่ากลับมาแล้วพร้อมสาเหตุ
+      const alerted = req.phone.silent_alerted_at && Date.parse(req.phone.silent_alerted_at) >= Date.parse(back.silentFrom);
+      if (alerted) {
+        const kid = mustKid(req.phone.kid_id);
+        push.notify(
+          { role: 'parent' },
+          {
+            title: `📱 ${kid.avatar} ${kid.name}: ${req.phone.name} กลับมาแล้ว (เงียบไป ${minutesText(Date.parse(back.backAt) - Date.parse(back.silentFrom))})`,
+            body: returnSummary(back),
+            url: '/parent/phones',
+            tag: `back-${req.phone.id}`,
+          },
+        );
+      }
+    }
+    if (req.phone.gap_from && report.bootCount != null) db.prepare('UPDATE phones SET gap_from = NULL WHERE id = ?').run(req.phone.id);
     s.saveUsage.run(req.phone.id, day, usedSec);
     const appUsage = readAppUsage(b.appUsage);
     if (appUsage.length) {
@@ -444,7 +556,8 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
     if (apps) db.prepare('UPDATE phones SET report = ?, apps = ? WHERE id = ?').run(JSON.stringify(report), JSON.stringify(apps), req.phone.id);
     else db.prepare('UPDATE phones SET report = ? WHERE id = ?').run(JSON.stringify(report), req.phone.id);
     const protectionsChanged = JSON.stringify(prev?.protections ?? null) !== JSON.stringify(report.protections) || prev?.mode !== report.mode;
-    if (!prev || prev.lock !== lock || prev.location !== report.location || protectionsChanged || apps) changed('phones');
+    const updateChanged = JSON.stringify(prev?.update ?? null) !== JSON.stringify(report.update) || prev?.version !== report.version;
+    if (!prev || prev.lock !== lock || prev.location !== report.location || protectionsChanged || apps || back || updateChanged) changed('phones');
     res.json({ ok: true });
   });
 
@@ -626,7 +739,13 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
           report: parse(p.report),
           location: parse(p.location),
           locateRequestedAt: p.locate_requested_at,
+          updateRequestedAt: p.update_requested_at,
           createdAt: p.created_at,
+          // กลับมาหลังเงียบไปใน 24 ชม.ล่าสุด (สาเหตุ)
+          lastReturn: (() => {
+            const e = s.lastPhoneEvent.get(p.id, new Date(Date.now() - 86_400_000).toISOString());
+            return e ? eventJson(e) : null;
+          })(),
         })),
         kids: Object.fromEntries(
           kidIds.map((id) => [
@@ -670,6 +789,15 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
       res.json({ ok: true, online: isPhoneOnline(phone.id) });
     });
 
+    // สั่งให้เครื่องดาวน์โหลดแอปล็อคจอรุ่นใหม่ แล้วขึ้นหน้า "อัปเดต" ให้กดบนเครื่อง (แอป 2.7+)
+    P.post('/phones/:id/update', (req, res) => {
+      const phone = mustPhone(req.params.id);
+      db.prepare('UPDATE phones SET update_requested_at = ? WHERE id = ?').run(nowIso(), phone.id);
+      notifyPhones({ type: 'state' }, [phone.id]);
+      changed('phones');
+      res.json({ ok: true, online: isPhoneOnline(phone.id) });
+    });
+
     // รายงานเวลาใช้งานรายแอปของเด็ก รวมทุกเครื่อง ย้อนหลัง days วัน (รวมวันนี้)
     // + ช่วงที่เปิดจอ/จำนวนครั้งที่ปลดล็อค (แอป 2.5+ · ไม่มีข้อมูล = sessions null) + แอปที่ติดตั้ง/ลบ + เว็บที่บล็อค (30 วัน)
     P.get('/kids/:id/app-usage', (req, res) => {
@@ -699,6 +827,7 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
       const appsOfPhone = new Map(s.phones.all().map((p) => [p.id, p.apps]));
       res.json({
         days: list,
+        phoneEvents: s.phoneEventsOfKid.all(kid.id, since).map((e) => ({ ...eventJson(e), phone: e.phone })),
         appChanges: s.appChangesOfKid.all(kid.id, since),
         webBlocks: s.webBlocksOfKid.all(kid.id, since).map(({ phoneId, ...w }) => ({
           ...w,

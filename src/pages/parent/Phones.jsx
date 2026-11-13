@@ -251,6 +251,23 @@ function PhoneRow({ phone, today, appLatest, onMenu, onChanged }) {
   // ยังจำกัดแบตเตอรี่อยู่ → มือถือบางยี่ห้อปิดแอปเองตอนเครื่องว่าง/รีสตาร์ท แล้วไม่มีอะไรล็อค (เจอกับ OPPO ของจริง)
   const batteryLimited = !phone.releasing && latest?.protections && !latest.protections.battery;
   const bat = latest?.battery; // แบตตอนส่งรายงานล่าสุด (เครื่องออฟไลน์ = ค่าก่อนหายไป)
+  const back = !silent && phone.lastReturn; // กลับมาหลังเงียบไป (24 ชม.ล่าสุด)
+  // แอป 2.7+ อัปเดตตัวเองได้: ผู้ปกครองกดจากเว็บ แล้วกด "อัปเดต" ที่หน้าต่างบนเครื่องลูก
+  const selfUpdate = outdated && !olderVersion(latest.version, '2.7');
+  const [updating, setUpdating] = useState(false);
+
+  async function requestUpdate() {
+    setUpdating(true);
+    try {
+      const { online } = await api.post(`/api/parent/phones/${phone.id}/update`);
+      toast.success(online ? 'สั่งแล้ว — กด “อัปเดต” ที่หน้าต่างบนเครื่องลูก' : 'สั่งแล้ว — เครื่องจะเริ่มอัปเดตเมื่อต่อเน็ต');
+      onChanged();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setUpdating(false);
+    }
+  }
 
   async function toggleLock() {
     setBusy(true);
@@ -296,6 +313,14 @@ function PhoneRow({ phone, today, appLatest, onMenu, onChanged }) {
           ⋯
         </button>
       </div>
+      {back && (
+        <p className="mt-1.5 rounded-xl bg-sunken px-3 py-2 text-[13px]">
+          <span className="font-semibold">
+            ↩️ กลับมา {ago(back.backAt)} หลังเงียบไป {duration((Date.parse(back.backAt) - Date.parse(back.silentFrom)) / 1000)}
+          </span>
+          <span className="text-mute"> — {back.summary}</span>
+        </p>
+      )}
       {silent && bat && (
         <p className="mt-1.5 rounded-xl bg-sunken px-3 py-2 text-[13px]">
           {bat.level <= 5 && !bat.charging ? (
@@ -334,7 +359,23 @@ function PhoneRow({ phone, today, appLatest, onMenu, onChanged }) {
           </ol>
         </div>
       )}
-      {outdated && (
+      {selfUpdate && (
+        <div className="mt-1.5 rounded-xl bg-sunken px-3 py-2 text-[13px]">
+          <p className="font-semibold">
+            ⬆️ แอปล็อคจอยังเป็นรุ่น {latest.version} (มีรุ่น {appLatest} แล้ว)
+          </p>
+          <UpdateStatus phone={phone} latest={latest} />
+          <button className="btn btn-soft mt-2 min-h-10 w-full text-sm" onClick={requestUpdate} disabled={updating || phone.releasing}>
+            ⬆️ อัปเดตเป็นรุ่น {appLatest} ตอนนี้
+          </button>
+          {latest.protections && !latest.protections.installer && (
+            <p className="mt-1.5 text-mute">
+              ครั้งแรกต้องอนุญาตให้แอปอัปเดตตัวเอง: เปิดแอปล็อคจอบนเครื่องลูก → ใส่ PIN → “อัปเดตแอปเองได้” → เปิด
+            </p>
+          )}
+        </div>
+      )}
+      {outdated && !selfUpdate && (
         <div className="mt-1.5 rounded-xl bg-sunken px-3 py-2 text-[13px]">
           <p className="font-semibold">
             ⬆️ แอปล็อคจอยังเป็นรุ่น {latest.version} (มีรุ่น {appLatest} แล้ว) — อัปเดตบนมือถือลูก:
@@ -355,6 +396,23 @@ function PhoneRow({ phone, today, appLatest, onMenu, onChanged }) {
       <LocationLine phone={phone} onChanged={onChanged} />
     </li>
   );
+}
+
+/** ความคืบหน้าการอัปเดตที่เครื่องรายงานมา (แอป 2.7+) */
+function UpdateStatus({ phone, latest }) {
+  const u = latest.update;
+  // สั่งไปแล้ว แต่เครื่องยังไม่ได้รายงานอะไรหลังจากนั้น (รายงานหลังสั่ง 1 นาทีแล้ว = เครื่องรับคำสั่งไปแล้ว)
+  const asked =
+    phone.updateRequestedAt &&
+    Date.now() - Date.parse(phone.updateRequestedAt) < 10 * 60_000 &&
+    !(latest.at && Date.parse(latest.at) > Date.parse(phone.updateRequestedAt) + 60_000);
+  if (u && Date.now() - Date.parse(u.at) < 30 * 60_000) {
+    if (u.state === 'downloading') return <p className="mt-1 text-mute">⏳ กำลังดาวน์โหลดรุ่นใหม่…</p>;
+    if (u.state === 'waiting') return <p className="mt-1 font-semibold text-purple-700">👆 รอกด “อัปเดต” ที่หน้าต่างบนเครื่องลูก</p>;
+    if (u.state === 'failed') return <p className="mt-1 font-semibold text-bad">⚠️ อัปเดตไม่สำเร็จ: {u.message || 'ลองใหม่อีกครั้ง'}</p>;
+  }
+  if (asked) return <p className="mt-1 text-mute">⏳ สั่งแล้ว รอเครื่องรับคำสั่ง (เครื่องต้องต่อเน็ต)</p>;
+  return <p className="mt-1 text-mute">กดปุ่มนี้ แล้วกด “อัปเดต” ที่หน้าต่างที่ขึ้นบนเครื่องลูก — ไม่ต้องดาวน์โหลดเองหรือจับคู่ใหม่</p>;
 }
 
 /** ตำแหน่งล่าสุดของเครื่อง + ขอตำแหน่งตอนนี้ + เปิดใน Google Maps */
@@ -583,6 +641,22 @@ function ReportSheet({ open, kid, rules, onClose }) {
             </ul>
           )}
 
+          <ActivityList
+            title="📵 ช่วงที่เครื่องเงียบไป"
+            empty="ยังไม่มี — บอกสาเหตุได้เมื่อเครื่องใช้แอปล็อคจอ 2.7 ขึ้นไป"
+            items={report.phoneEvents.map((e) => ({
+              key: `${e.phone}-${e.backAt}`,
+              main: (
+                <>
+                  <b>
+                    เงียบ {timeOf(e.silentFrom)}–{timeOf(e.backAt)}
+                  </b>
+                  <span className="text-mute"> ({duration((Date.parse(e.backAt) - Date.parse(e.silentFrom)) / 1000)})</span> · {e.summary}
+                </>
+              ),
+              at: e.backAt,
+            }))}
+          />
           <ActivityList
             title="📲 ติดตั้ง / ลบแอป"
             empty="ยังไม่มี — มือถือแจ้งเมื่อรายชื่อแอปเปลี่ยน (ผู้ปกครองได้แจ้งเตือนด้วย)"

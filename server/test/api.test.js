@@ -2,7 +2,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDb } from '../db.js';
 import { createApp } from '../app.js';
-import { silentHint } from '../screen.js';
+import { returnSummary, silentHint } from '../screen.js';
 
 let server;
 let base;
@@ -380,6 +380,83 @@ test('ข้อความตอนเครื่องเงียบดู�
   assert.match(silentHint({ battery: { level: 3, charging: false } }), /แบตล่าสุด 3% — น่าจะแบตหมด/);
   assert.match(silentHint({ battery: { level: 3, charging: true } }), /แอปล็อคจออาจถูกปิด/);
   assert.match(silentHint({ battery: { level: 64, charging: false } }), /แบตล่าสุด 64% — แอปล็อคจออาจถูกปิด/);
+});
+
+test('แอป 2.7: เครื่องกลับมาหลังเงียบไป บอกสาเหตุได้ + สั่งอัปเดตแอปจากเว็บ', async () => {
+  const sent = [];
+  const realNotify = app.locals.push.notify;
+  app.locals.push.notify = (target, payload) => sent.push({ target, payload });
+  try {
+    const day = (await phone.get('/api/phone/state')).body.day;
+    const id = (await mom.get('/api/parent/phones')).body.phones[0].id;
+    const ago = (ms) => new Date(Date.now() - ms).toISOString();
+    const H = 3_600_000;
+    const base = { day, usedSec: 0, version: '2.7', bootCount: 5, bootAt: ago(5 * H), pid: 100, appStartAt: ago(5 * H) };
+    const report = (extra) => phone.post('/api/phone/report', { ...base, ...extra });
+    const lastReturn = async () => (await mom.get('/api/parent/phones')).body.phones[0].lastReturn;
+    // จำลองว่าเครื่องหายไป: ติดต่อครั้งสุดท้าย (และรายงานล่าสุด) เมื่อ ms ที่แล้ว
+    const goSilent = (ms, alertedMs = null) => {
+      const row = db.prepare('SELECT report FROM phones WHERE id = ?').get(id);
+      const rep = JSON.parse(row.report);
+      rep.at = ago(ms);
+      db.prepare('UPDATE phones SET last_seen_at = ?, report = ?, silent_alerted_at = ? WHERE id = ?').run(ago(ms), JSON.stringify(rep), alertedMs == null ? null : ago(alertedMs), id);
+    };
+
+    await report({}); // รายงานแรกของรุ่น 2.7 — ยังไม่มีอะไรให้เทียบ
+    assert.equal(await lastReturn(), null);
+
+    // หายไป 3 ชม. (ได้แจ้งเตือนเงียบไปแล้ว) แล้วกลับมาพร้อมนับการเปิดเครื่องใหม่ = รีสตาร์ท
+    goSilent(3 * H, 2 * H);
+    await phone.get('/api/phone/state'); // ติดต่อครั้งแรกหลังหายไป
+    sent.length = 0;
+    await report({ bootCount: 6, bootAt: ago(10 * 60_000), pid: 200, appStartAt: ago(9 * 60_000) });
+    let back = await lastReturn();
+    assert.equal(back.kind, 'restart');
+    assert.match(back.summary, /เครื่องปิดหรือรีสตาร์ท — เปิดเครื่องใหม่/);
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].payload.title, /กลับมาแล้ว \(เงียบไป 3 ชม\.\)/);
+    assert.equal(db.prepare('SELECT gap_from FROM phones WHERE id = ?').get(id).gap_from, null, 'บอกสาเหตุแล้วล้างจุดเริ่มเงียบ');
+
+    // แอปถูกปิดแล้วเพิ่งกลับมา (เครื่องไม่ได้รีสตาร์ท) — ไม่เคยแจ้งว่าเงียบ จึงไม่เด้งแจ้งเตือน
+    goSilent(2 * H);
+    await report({ bootCount: 6, pid: 300, appStartAt: ago(60_000) });
+    assert.equal((await lastReturn()).kind, 'app');
+    assert.equal(sent.length, 1);
+
+    // แอปทำงานตลอดแต่ติดต่อไม่ได้ = ไม่มีเน็ต
+    goSilent(90 * 60_000);
+    await report({ bootCount: 6, pid: 300 });
+    assert.equal((await lastReturn()).kind, 'offline');
+
+    // หลับปกติ (ส่งสัญญาณทุก ~20 นาที) ไม่นับเป็นการหายไป
+    goSilent(20 * 60_000);
+    await report({ bootCount: 6, pid: 300 });
+
+    // แบตเหลือ 3% แล้วหายไป กลับมาพร้อมเปิดเครื่องใหม่ = แบตหมด
+    await report({ bootCount: 6, pid: 300, battery: { level: 3, charging: false } });
+    goSilent(4 * H);
+    await report({ bootCount: 7, bootAt: ago(30 * 60_000), pid: 400, appStartAt: ago(29 * 60_000), battery: { level: 20, charging: true } });
+    assert.equal((await lastReturn()).kind, 'battery');
+    const kid = (await mom.get('/api/parent/phones')).body.phones[0].kidId;
+    const events = (await mom.get(`/api/parent/kids/${kid}/app-usage`)).body.phoneEvents;
+    assert.deepEqual(events.map((e) => e.kind), ['battery', 'offline', 'app', 'restart']);
+
+    // ผู้ปกครองสั่งอัปเดตจากเว็บ → เครื่องเห็นในสถานะ · เครื่องรายงานความคืบหน้ากลับมา
+    assert.equal((await mom.post(`/api/parent/phones/${id}/update`)).status, 200);
+    assert.ok((await phone.get('/api/phone/state')).body.phone.updateRequestedAt);
+    await report({ bootCount: 7, pid: 400, update: { state: 'waiting', version: '2.8' } });
+    assert.equal((await mom.get('/api/parent/phones')).body.phones[0].report.update.state, 'waiting');
+    assert.equal((await kidPhone.post(`/api/parent/phones/${id}/update`)).status, 401, 'เด็กสั่งเองไม่ได้');
+  } finally {
+    app.locals.push.notify = realNotify;
+  }
+});
+
+test('สาเหตุตอนกลับมา: รีสตาร์ทแล้วแอปเพิ่งเริ่มทีหลัง บอกให้ตั้งเริ่มอัตโนมัติ', () => {
+  const boot = '2026-11-12T19:51:00.000Z';
+  assert.match(returnSummary({ kind: 'restart', bootAt: boot, appStartAt: '2026-11-12T19:52:00.000Z' }), /^🔄 เครื่องปิดหรือรีสตาร์ท — เปิดเครื่องใหม่ 02:51$/);
+  assert.match(returnSummary({ kind: 'restart', bootAt: boot, appStartAt: '2026-11-13T11:00:00.000Z' }), /แต่แอปเพิ่งเริ่มทำงาน 18:00 .*เริ่มอัตโนมัติ/);
+  assert.match(returnSummary({ kind: 'offline' }), /ไม่มีเน็ต/);
 });
 
 test('แจ้งผู้ปกครองเมื่อสิทธิ์ที่จำเป็นถูกปิด หรือเครื่องเงียบเกิน 1 ชม.', async () => {

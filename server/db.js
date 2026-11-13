@@ -235,6 +235,28 @@ const MIGRATIONS = [
       CREATE INDEX web_blocks_phone_at ON web_blocks(phone_id, at);
     `);
   },
+
+  // แอปล็อคจอ 2.7: เครื่องกลับมาหลังเงียบไป (รีสตาร์ท / แอปถูกปิด / ไม่มีเน็ต) + ผู้ปกครองสั่งอัปเดตแอปจากเว็บ
+  (db) => {
+    db.exec(`
+      -- เริ่มเงียบเมื่อไหร่ (ติดต่อครั้งก่อน) — ตั้งตอนเครื่องกลับมาติดต่อหลังหายไปนาน ล้างตอนรายงานถัดไปบอกสาเหตุแล้ว
+      ALTER TABLE phones ADD COLUMN gap_from TEXT;
+      ALTER TABLE phones ADD COLUMN update_requested_at TEXT;
+
+      -- ช่วงที่เครื่องเงียบไป + สาเหตุ (เก็บ 30 วัน)
+      CREATE TABLE phone_events (
+        id INTEGER PRIMARY KEY,
+        phone_id INTEGER NOT NULL REFERENCES phones(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN ('restart','battery','app','offline')),
+        silent_from TEXT NOT NULL,
+        back_at TEXT NOT NULL,
+        boot_at TEXT,
+        app_start_at TEXT,
+        battery INTEGER
+      );
+      CREATE INDEX phone_events_phone_back ON phone_events(phone_id, back_at);
+    `);
+  },
 ];
 
 export function minutesFromName(name) {
