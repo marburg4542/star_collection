@@ -65,7 +65,7 @@ export function createApp(db, { appUrl, distDir } = {}) {
     rewards: db.prepare('SELECT id, name, emoji, category, cost, minutes FROM rewards ORDER BY cost, sort_order, id'),
     reward: db.prepare('SELECT * FROM rewards WHERE id = ?'),
     requests: db.prepare(`
-      SELECT id, kid_id AS kidId, reward_id AS rewardId, reward_name AS name, reward_emoji AS emoji, cost, status, note,
+      SELECT id, kid_id AS kidId, reward_id AS rewardId, reward_name AS name, reward_emoji AS emoji, cost, minutes, status, note,
              created_at AS createdAt, decided_at AS decidedAt
       FROM requests
       WHERE status = 'pending' OR decided_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-14 days')
@@ -320,10 +320,8 @@ export function createApp(db, { appUrl, distDir } = {}) {
   });
 
   // ยกเลิกรายการที่กดผิด — ไม่ลบทิ้ง แต่ทำเครื่องหมายไว้ ยอดดาวคำนวณใหม่เอง
-  P.post('/transactions/:id/void', (req, res) => {
-    const tx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(Number(req.params.id));
-    if (!tx) throw new HttpError(404, 'ไม่พบรายการนี้');
-    if (tx.voided_at) throw new HttpError(409, 'รายการนี้ถูกยกเลิกไปแล้ว');
+  // รายการแลกของรางวัล: คำขอถือว่ายกเลิก และเวลาเล่นที่ได้จากรางวัลนั้นถูกเอาคืน
+  function voidTransaction(tx) {
     db.transaction(() => {
       db.prepare("UPDATE transactions SET voided_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(tx.id);
       if (tx.request_id) db.prepare("UPDATE requests SET status = 'cancelled' WHERE id = ?").run(tx.request_id);
@@ -331,7 +329,29 @@ export function createApp(db, { appUrl, distDir } = {}) {
     if (tx.request_id) screen.revokeForRequest(tx.request_id, tx.kid_id);
     else screen.pokeKid(tx.kid_id);
     changed('stars');
+  }
+
+  P.post('/transactions/:id/void', (req, res) => {
+    const tx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(Number(req.params.id));
+    if (!tx) throw new HttpError(404, 'ไม่พบรายการนี้');
+    if (tx.voided_at) throw new HttpError(409, 'รายการนี้ถูกยกเลิกไปแล้ว');
+    voidTransaction(tx);
     res.json({ ok: true });
+  });
+
+  // คืนดาวคำขอที่อนุมัติไปแล้ว (เช่น กดอนุมัติพลาด) — ดาวกลับมา ไม่นับเป็นดาวสะสม (การแลกไม่ได้ลดดาวสะสมตั้งแต่แรก)
+  P.post('/requests/:id/refund', (req, res) => {
+    const request = q.request.get(Number(req.params.id));
+    if (!request) throw new HttpError(404, 'ไม่พบคำขอนี้');
+    if (request.status !== 'approved') throw new HttpError(409, 'คำขอนี้ไม่ได้อยู่ในสถานะอนุมัติแล้ว');
+    const tx = db.prepare("SELECT * FROM transactions WHERE request_id = ? AND type = 'redeem' AND voided_at IS NULL").get(request.id);
+    if (tx) voidTransaction(tx);
+    else {
+      db.prepare("UPDATE requests SET status = 'cancelled' WHERE id = ?").run(request.id);
+      changed('stars');
+    }
+    changed('requests');
+    res.json({ ok: true, stars: request.cost });
   });
 
   function redeem(request, kid) {

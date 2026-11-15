@@ -14,7 +14,8 @@ export default function Home() {
   const location = useLocation();
   const navigate = useNavigate();
   const [pinOpen, setPinOpen] = useState(!!location.state?.askPin);
-  const [board, setBoard] = useLocalState('board', 'total');
+  // ดาวคงเหลือเป็นหลัก — ใช้ชื่อใหม่ ทุกเครื่องจะเริ่มที่ดาวคงเหลือแม้เคยเลือกแบบเดิมไว้
+  const [board, setBoard] = useLocalState('podium', 'balance');
   const next = location.state?.next;
   const kids = data.kids;
   const pending = data.requests.filter((r) => r.status === 'pending').length + (data.timeRequests?.length ?? 0);
@@ -62,8 +63,8 @@ export default function Home() {
               value={board}
               onChange={setBoard}
               options={[
-                { value: 'total', label: 'สะสมทั้งหมด' },
                 { value: 'balance', label: 'ดาวคงเหลือ' },
+                { value: 'total', label: 'สะสมทั้งหมด' },
               ]}
             />
             <p className="mt-2 px-1 text-center text-[13px] text-mute">

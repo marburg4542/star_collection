@@ -125,6 +125,23 @@ test('ยกเลิกรายการที่กดผิด', async () =>
   assert.equal(b.balance, 2);
 });
 
+test('คืนดาวคำขอที่อนุมัติพลาด — ดาวกลับมา ไม่นับเป็นดาวสะสม', async () => {
+  const stateOf = async () => (await mom.get('/api/state')).body;
+  const before = (await stateOf()).kids.find((k) => k.id === kidA);
+  const approved = (await stateOf()).requests.find((r) => r.kidId === kidA && r.status === 'approved');
+  assert.ok(approved);
+  assert.equal((await kidPhone.post(`/api/parent/requests/${approved.id}/refund`)).status, 401, 'เด็กกดคืนเองไม่ได้');
+  assert.equal((await mom.post(`/api/parent/requests/${approved.id}/refund`)).status, 200);
+  assert.equal((await mom.post(`/api/parent/requests/${approved.id}/refund`)).status, 409, 'คืนซ้ำไม่ได้');
+  const after = await stateOf();
+  const a = after.kids.find((k) => k.id === kidA);
+  assert.equal(a.balance, before.balance + approved.cost, 'ดาวกลับมา');
+  assert.equal(a.total, before.total, 'ดาวสะสมไม่เพิ่ม');
+  assert.equal(after.requests.find((r) => r.id === approved.id).status, 'cancelled');
+  const redeem = (await mom.get(`/api/history?kid=${kidA}`)).body.items.find((t) => t.type === 'redeem');
+  assert.ok(redeem.voidedAt, 'รายการแลกในประวัติถูกยกเลิก');
+});
+
 test('เปลี่ยนรหัสครอบครัวแล้วเครื่องอื่นหลุด', async () => {
   assert.equal((await mom.put('/api/parent/pin', { currentPin: '0000', newPin: '4321' })).status, 400);
   assert.equal((await mom.put('/api/parent/pin', { currentPin: '1234', newPin: '4321' })).status, 200);

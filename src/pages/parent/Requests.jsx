@@ -4,6 +4,7 @@ import { api } from '../../lib/api.js';
 import { useStore } from '../../lib/store.jsx';
 import { dayLabel, timeOf } from '../../lib/format.js';
 import { Avatar, Empty, Sheet, StarCount } from '../../components/ui.jsx';
+import { Confirm } from '../../components/Feedback.jsx';
 
 const STATUS = {
   approved: { label: '✅ อนุมัติแล้ว', cls: 'text-good' },
@@ -19,6 +20,7 @@ export default function Requests() {
   const [rejecting, setRejecting] = useState(null);
   const [redeemOpen, setRedeemOpen] = useState(false);
   const [busyId, setBusyId] = useState(null);
+  const [refunding, setRefunding] = useState(null);
 
   async function approve(r) {
     setBusyId(r.id);
@@ -97,7 +99,14 @@ export default function Requests() {
                       {r.note && ` · “${r.note}”`}
                     </p>
                   </div>
-                  <span className={`shrink-0 text-sm font-semibold ${STATUS[r.status]?.cls}`}>{STATUS[r.status]?.label}</span>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span className={`text-sm font-semibold ${STATUS[r.status]?.cls}`}>{STATUS[r.status]?.label}</span>
+                    {r.status === 'approved' && (
+                      <button className="btn btn-soft min-h-8 px-3 text-[13px]" onClick={() => setRefunding(r)}>
+                        ↩️ คืนดาว
+                      </button>
+                    )}
+                  </div>
                 </li>
               );
             })}
@@ -105,6 +114,26 @@ export default function Requests() {
         </section>
       )}
 
+      <Confirm
+        open={!!refunding}
+        title="คืนดาวคำขอนี้?"
+        confirmLabel={refunding ? `คืน ${refunding.cost} ดาว` : 'คืนดาว'}
+        onClose={() => setRefunding(null)}
+        onConfirm={async () => {
+          const r = refunding;
+          await api.post(`/api/parent/requests/${r.id}/refund`);
+          toast.success(`คืน ${r.cost} ดาวให้${kidById(r.kidId)?.name ?? ''}แล้ว`);
+        }}
+      >
+        {refunding && (
+          <p>
+            {refunding.emoji} {refunding.name} ของ{kidById(refunding.kidId)?.name} จะถูกยกเลิก และได้ดาวคืน {refunding.cost} ดวง
+            {refunding.minutes ? ' — เวลาเล่นที่ได้จากรางวัลนี้จะถูกเอาคืนด้วย (ถ้ายังเป็นวันเดียวกัน)' : ''}
+            <br />
+            ไม่นับเป็นดาวสะสม · ใช้เมื่อกดอนุมัติพลาด
+          </p>
+        )}
+      </Confirm>
       <RejectSheet request={rejecting} onClose={() => setRejecting(null)} />
       <RedeemSheet open={redeemOpen} onClose={() => setRedeemOpen(false)} />
     </div>
