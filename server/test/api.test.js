@@ -1,5 +1,8 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { openDb } from '../db.js';
 import { createApp } from '../app.js';
 import { returnSummary, silentHint } from '../screen.js';
@@ -8,40 +11,48 @@ let server;
 let base;
 let app;
 let db;
+let mediaDir;
 
 before(async () => {
   db = openDb(':memory:');
-  app = createApp(db, { appUrl: 'https://stars.example.test' });
+  mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stars-vocab-'));
+  app = createApp(db, { appUrl: 'https://stars.example.test', mediaDir });
   await new Promise((resolve) => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
 });
-after(() => server.close());
+after(() => {
+  server.close();
+  fs.rmSync(mediaDir, { recursive: true, force: true });
+});
 
 // เครื่องจำลอง: จำคุกกี้ไว้ + ส่ง token ผู้ปกครองถ้ามี
 function client() {
   let cookie = '';
   let parentToken = '';
-  async function call(method, url, body) {
+  async function call(method, url, body, rawType) {
     const res = await fetch(base + url, {
       method,
       headers: {
-        'content-type': 'application/json',
+        'content-type': rawType ?? 'application/json',
         ...(cookie && { cookie }),
         ...(parentToken && { 'x-parent-token': parentToken }),
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : rawType ? body : JSON.stringify(body),
     });
     const set = res.headers.get('set-cookie');
     if (set) cookie = set.split(';')[0];
-    return { status: res.status, body: await res.json() };
+    const type = res.headers.get('content-type') ?? '';
+    return { status: res.status, type, body: type.includes('json') ? await res.json() : Buffer.from(await res.arrayBuffer()) };
   }
   return {
     call,
     get: (u) => call('GET', u),
     post: (u, b = {}) => call('POST', u, b),
     put: (u, b = {}) => call('PUT', u, b),
+    del: (u) => call('DELETE', u),
+    upload: (u, buf, type) => call('POST', u, buf, type),
     setParent: (t) => (parentToken = t),
   };
 }
@@ -166,6 +177,96 @@ test('แลกดาวเป็นเงินแบบกรอกจำน�
   assert.equal((await mom.put('/api/parent/money-rate', { rate: 0 })).status, 200);
   assert.equal((await kidPhone.post('/api/requests', { kidId: kidA, baht: 1 })).status, 409, 'ปิดแล้วขอไม่ได้');
   assert.equal((await mom.put('/api/parent/money-rate', { rate: 1 })).status, 200);
+});
+
+test('เกมคำศัพท์: สร้างชุด ใส่รูป สอบ — ได้ดาวครั้งแรกที่ผ่าน', async () => {
+  const setBody = { title: 'ผลไม้กับสัตว์', weekStart: '2026-11-16', passPct: 80, stars: 5, kidIds: [kidA] };
+  assert.equal((await kidPhone.post('/api/parent/vocab', setBody)).status, 401, 'เด็กสร้างชุดเองไม่ได้');
+  assert.equal((await mom.post('/api/parent/vocab', { ...setBody, weekStart: 'next week' })).status, 400);
+  assert.equal((await mom.post('/api/parent/vocab', { ...setBody, kidIds: [] })).status, 400);
+  const setId = (await mom.post('/api/parent/vocab', setBody)).body.id;
+
+  // รูป: ต้องเป็นไฟล์รูปจริง
+  assert.equal((await mom.upload('/api/parent/vocab/images', Buffer.from('hello'), 'image/png')).status, 400);
+  const png = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a5f1b0e20000000049454e44ae426082', 'hex');
+  const up = await mom.upload('/api/parent/vocab/images', png, 'image/png');
+  assert.equal(up.status, 200);
+  assert.match(up.body.image, /^[a-f0-9]{24}\.png$/);
+  assert.ok(fs.existsSync(path.join(mediaDir, up.body.image)));
+
+  const words = [
+    { word: 'apple', meaning: 'แอปเปิ้ล', reading: 'แอป-เปิ้ล', example: 'I eat an apple.', emoji: '🍎', image: up.body.image },
+    { word: 'banana', meaning: 'กล้วย', emoji: '🍌' },
+    { word: 'cat', meaning: 'แมว', emoji: '🐱' },
+    { word: 'ice cream', meaning: 'ไอศกรีม' },
+    { word: "don't", meaning: 'อย่า' },
+  ];
+  assert.equal((await mom.post(`/api/parent/vocab/${setId}/words`, { word: 'แมว', meaning: 'cat' })).status, 400, 'คำศัพท์ต้องเป็นอังกฤษ');
+  assert.equal((await mom.post(`/api/parent/vocab/${setId}/words`, { ...words[0], image: '../secret.png' })).status, 400);
+  for (const w of words) assert.equal((await mom.post(`/api/parent/vocab/${setId}/words`, w)).status, 200);
+
+  const list = (await kidPhone.get('/api/vocab')).body.sets;
+  const set = list.find((s) => s.id === setId);
+  assert.deepEqual(set.kidIds, [kidA]);
+  assert.equal(set.words.length, 5);
+  assert.equal(set.words[0].reading, 'แอป-เปิ้ล');
+  assert.equal((await stranger.get('/api/vocab')).status, 401);
+
+  // รูปเปิดได้จากเครื่องในครอบครัวเท่านั้น
+  const img = await kidPhone.get(`/api/vocab/images/${up.body.image}`);
+  assert.equal(img.status, 200);
+  assert.equal(img.type, 'image/png');
+  assert.equal((await stranger.get(`/api/vocab/images/${up.body.image}`)).status, 401);
+  assert.equal((await kidPhone.get('/api/vocab/images/..%2Fstars.sqlite')).status, 404);
+
+  const id = Object.fromEntries(set.words.map((w) => [w.word, w.id]));
+  const answer = (overrides = {}) => [
+    { wordId: id.apple, mode: 'choice', answer: 'แอปเปิ้ล' },
+    { wordId: id.banana, mode: 'spell', answer: ' BANANA ' },
+    { wordId: id.cat, mode: 'choice', answer: 'แมว' },
+    { wordId: id['ice cream'], mode: 'spell', answer: 'ice  cream' },
+    { wordId: id["don't"], mode: 'spell', answer: 'don’t' },
+  ].map((a) => ({ ...a, ...(overrides[a.wordId] ?? {}) }));
+  const attempt = (kidId, answers) => kidPhone.post(`/api/vocab/${setId}/attempts`, { kidId, answers });
+
+  assert.equal((await attempt(kidB, answer())).status, 403, 'ชุดนี้ไม่ได้ให้น้องบี');
+  assert.equal((await attempt(kidA, answer().slice(1))).status, 409, 'ต้องตอบครบทุกคำ');
+
+  const before = (await mom.get('/api/state')).body.kids.find((k) => k.id === kidA);
+  // ถูก 3/5 = 60% ไม่ผ่าน
+  let r = await attempt(kidA, answer({ [id.apple]: { answer: 'กล้วย' }, [id.banana]: { answer: 'bananna' } }));
+  assert.deepEqual(r.body, { correct: 3, total: 5, passed: false, stars: 0 });
+  // ถูก 5/5 ผ่าน ได้ดาว (ตัวพิมพ์ใหญ่/ช่องว่าง/อัญประกาศโค้งไม่นับว่าผิด)
+  r = await attempt(kidA, answer());
+  assert.deepEqual(r.body, { correct: 5, total: 5, passed: true, stars: 5 });
+  // ผ่านซ้ำไม่ได้ดาวเพิ่ม
+  r = await attempt(kidA, answer());
+  assert.equal(r.body.stars, 0);
+  const after = (await mom.get('/api/state')).body.kids.find((k) => k.id === kidA);
+  assert.equal(after.balance, before.balance + 5);
+  assert.equal(after.total, before.total + 5, 'นับเป็นดาวสะสม');
+  const result = (await kidPhone.get('/api/vocab')).body.sets.find((s) => s.id === setId).results[kidA];
+  assert.equal(result.attempts, 3);
+  assert.equal(result.best, 1);
+  assert.equal(result.passed, true);
+  assert.equal(result.rewarded, true);
+
+  // ผู้ปกครองยกเลิกดาวนั้น → สอบผ่านใหม่ได้ดาวอีกครั้ง
+  const tx = (await mom.get(`/api/history?kid=${kidA}`)).body.items.find((t) => t.title === 'สอบคำศัพท์ผ่าน: ผลไม้กับสัตว์' && !t.voidedAt);
+  assert.equal(tx.emoji, '📚');
+  assert.equal((await mom.post(`/api/parent/transactions/${tx.id}/void`)).status, 200);
+  assert.equal((await attempt(kidA, answer())).body.stars, 5);
+
+  // แก้ชุด: เพิ่มน้องบี · ลบคำที่มีรูปแล้วไฟล์รูปหายด้วย
+  assert.equal((await mom.put(`/api/parent/vocab/${setId}`, { ...setBody, kidIds: [kidA, kidB] })).status, 200);
+  assert.equal((await kidPhone.post(`/api/vocab/${setId}/attempts`, { kidId: kidB, answers: answer() })).status, 200);
+  assert.equal((await mom.del(`/api/parent/vocab/words/${id.apple}`)).status, 200);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.ok(!fs.existsSync(path.join(mediaDir, up.body.image)), 'ลบรูปทิ้งด้วย');
+  assert.equal((await attempt(kidA, answer())).status, 409, 'ส่งคำที่ถูกลบไปแล้วไม่ได้');
+
+  assert.equal((await mom.del(`/api/parent/vocab/${setId}`)).status, 200);
+  assert.ok(!(await kidPhone.get('/api/vocab')).body.sets.some((s) => s.id === setId));
 });
 
 test('เปลี่ยนรหัสครอบครัวแล้วเครื่องอื่นหลุด', async () => {

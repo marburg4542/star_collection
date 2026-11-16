@@ -257,6 +257,48 @@ const MIGRATIONS = [
       CREATE INDEX phone_events_phone_back ON phone_events(phone_id, back_at);
     `);
   },
+
+  // เกมท่องคำศัพท์รายสัปดาห์: ชุดคำ → เด็กที่ต้องท่อง → คำศัพท์ (รูปเก็บเป็นไฟล์ใน data/vocab) → ผลสอบแต่ละครั้ง
+  (db) => {
+    db.exec(`
+      CREATE TABLE vocab_sets (
+        id INTEGER PRIMARY KEY,
+        title TEXT NOT NULL,
+        week_start TEXT NOT NULL,
+        pass_pct INTEGER NOT NULL DEFAULT 80,
+        stars INTEGER NOT NULL DEFAULT 5,
+        created_at TEXT NOT NULL DEFAULT ${NOW}
+      );
+      CREATE TABLE vocab_set_kids (
+        set_id INTEGER NOT NULL REFERENCES vocab_sets(id) ON DELETE CASCADE,
+        kid_id INTEGER NOT NULL REFERENCES kids(id) ON DELETE CASCADE,
+        PRIMARY KEY (set_id, kid_id)
+      );
+      CREATE TABLE vocab_words (
+        id INTEGER PRIMARY KEY,
+        set_id INTEGER NOT NULL REFERENCES vocab_sets(id) ON DELETE CASCADE,
+        word TEXT NOT NULL,
+        meaning TEXT NOT NULL,
+        reading TEXT,
+        example TEXT,
+        emoji TEXT,
+        image TEXT,
+        sort_order INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX vocab_words_set ON vocab_words(set_id, sort_order);
+      CREATE TABLE vocab_attempts (
+        id INTEGER PRIMARY KEY,
+        set_id INTEGER NOT NULL REFERENCES vocab_sets(id) ON DELETE CASCADE,
+        kid_id INTEGER NOT NULL REFERENCES kids(id) ON DELETE CASCADE,
+        correct INTEGER NOT NULL,
+        total INTEGER NOT NULL,
+        passed INTEGER NOT NULL,
+        tx_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL DEFAULT ${NOW}
+      );
+      CREATE INDEX vocab_attempts_set_kid ON vocab_attempts(set_id, kid_id);
+    `);
+  },
 ];
 
 export function minutesFromName(name) {

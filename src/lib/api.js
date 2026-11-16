@@ -36,16 +36,17 @@ export function setParentToken(token) {
 }
 
 async function request(method, url, body) {
+  const file = typeof Blob !== 'undefined' && body instanceof Blob; // อัปโหลดรูป: ส่งไฟล์ตรงๆ
   let res;
   try {
     res = await fetch(url, {
       method,
       credentials: 'same-origin',
       headers: {
-        ...(body !== undefined && { 'Content-Type': 'application/json' }),
+        ...(body !== undefined && { 'Content-Type': file ? body.type : 'application/json' }),
         ...(parentToken && { 'X-Parent-Token': parentToken }),
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : file ? body : JSON.stringify(body),
     });
   } catch {
     throw new ApiError(0, 'offline', 'เชื่อมต่อไม่ได้ ตรวจอินเทอร์เน็ตแล้วลองใหม่');
@@ -72,4 +73,5 @@ export const api = {
   post: (url, body = {}) => request('POST', url, body),
   put: (url, body = {}) => request('PUT', url, body),
   del: (url) => request('DELETE', url),
+  upload: (url, blob) => request('POST', url, blob),
 };

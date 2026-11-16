@@ -14,6 +14,8 @@ import Requests from './pages/parent/Requests.jsx';
 import History from './pages/parent/History.jsx';
 import Manage from './pages/parent/Manage.jsx';
 import Phones from './pages/parent/Phones.jsx';
+import { VocabSetPage } from './pages/parent/Vocab.jsx';
+import VocabPlay from './pages/VocabPlay.jsx';
 
 export default function App() {
   return (
@@ -76,12 +78,14 @@ function Screens() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/kid/:id" element={<KidPage />} />
+        <Route path="/kid/:id/vocab/:setId" element={<VocabPlay />} />
         <Route path="/parent" element={<ParentLayout />}>
           <Route index element={<Give />} />
           <Route path="requests" element={<Requests />} />
           <Route path="phones" element={<Phones />} />
           <Route path="history" element={<History />} />
           <Route path="manage" element={<Manage />} />
+          <Route path="vocab/:id" element={<VocabSetPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

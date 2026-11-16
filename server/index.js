@@ -15,6 +15,7 @@ const db = openDb(dbFile);
 const app = createApp(db, {
   appUrl: process.env.APP_URL || 'https://stars.personal-proj.site',
   distDir: path.join(here, '..', 'dist'),
+  mediaDir: path.join(path.dirname(dbFile), 'vocab'), // รูปคำศัพท์ อยู่ข้างฐานข้อมูล (ไม่อยู่ใน git)
 });
 scheduleBackups(db, path.join(path.dirname(dbFile), 'backups'));
 

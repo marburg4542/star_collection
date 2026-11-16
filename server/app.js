@@ -19,6 +19,7 @@ import {
 import { broadcast, eventsHandler } from './events.js';
 import { createPush } from './push.js';
 import { createScreen } from './screen.js';
+import { createVocab } from './vocab.js';
 import { HttpError, bad, emoji, familyCode, oneOf, optionalText, pin, text, wholeNumber } from './validate.js';
 
 export const KID_COLORS = ['pink', 'sky', 'mint', 'lemon', 'lavender', 'peach'];
@@ -29,7 +30,7 @@ const MAX_PENDING_PER_KID = 10;
 // บริการแจ้งเตือนของเบราว์เซอร์ที่ยอมส่งไปหา — กันไม่ให้ใครใช้เซิร์ฟเวอร์ยิงคำขอไปที่อื่นในบ้าน
 const PUSH_HOSTS = ['fcm.googleapis.com', 'updates.push.services.mozilla.com', '.push.apple.com', '.notify.windows.com'];
 
-export function createApp(db, { appUrl, distDir } = {}) {
+export function createApp(db, { appUrl, distDir, mediaDir } = {}) {
   const app = express();
   const push = createPush(db, { subject: appUrl || 'https://stars.personal-proj.site' });
   const device = requireDevice(db);
@@ -126,6 +127,24 @@ export function createApp(db, { appUrl, distDir } = {}) {
 
   const screen = createScreen({ db, push, changed, mustKid, mustReward, kidStars, createRequest });
   Object.assign(app.locals, { push, screen }); // ให้เทสต์ดูการแจ้งเตือน / สั่งตรวจเครื่องเงียบเองได้
+
+  // ดาวจากเกมท่องคำศัพท์ — นับเป็นดาวสะสมเหมือนทำดี
+  function awardStars(kidId, stars, title) {
+    const { lastInsertRowid } = q.insertTx.run({
+      kidId,
+      type: 'earn',
+      amount: stars,
+      title,
+      emoji: '📚',
+      severity: null,
+      note: null,
+      activityId: null,
+      requestId: null,
+    });
+    screen.pokeKid(kidId);
+    return Number(lastInsertRowid);
+  }
+  const vocab = createVocab({ db, push, changed, mustKid, device, awardStars, mediaDir });
 
   function state() {
     return {
@@ -575,7 +594,9 @@ export function createApp(db, { appUrl, distDir } = {}) {
   });
 
   screen.mountParent(P);
+  vocab.mountParent(P);
   app.use('/api/parent', P);
+  app.use('/api/vocab', vocab.router);
   app.use('/api/phone', screen.phoneRouter);
   app.use('/api', (req, res) => res.status(404).json({ error: 'not-found', message: 'ไม่พบ API นี้' }));
 
@@ -601,6 +622,7 @@ export function createApp(db, { appUrl, distDir } = {}) {
   app.use((err, req, res, next) => {
     if (err instanceof HttpError) return res.status(err.status).json({ error: 'bad', message: err.message });
     if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'bad', message: 'ข้อมูลไม่ถูกต้อง' });
+    if (err.type === 'entity.too.large') return res.status(413).json({ error: 'bad', message: 'ไฟล์ใหญ่เกินไป' });
     console.error(err);
     res.status(500).json({ error: 'server', message: 'เซิร์ฟเวอร์ขัดข้อง ลองใหม่อีกครั้ง' });
   });
