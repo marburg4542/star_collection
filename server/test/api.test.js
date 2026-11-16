@@ -142,6 +142,32 @@ test('คืนดาวคำขอที่อนุมัติพลาด �
   assert.ok(redeem.voidedAt, 'รายการแลกในประวัติถูกยกเลิก');
 });
 
+test('แลกดาวเป็นเงินแบบกรอกจำนวน — ไม่เกินดาวที่มี', async () => {
+  const stateOf = async () => (await mom.get('/api/state')).body;
+  const kid = (await stateOf()).kids.find((k) => k.id === kidA);
+  const available = kid.balance - kid.reserved;
+  assert.ok(available >= 3, `ต้องมีดาวพอทดสอบ (มี ${available})`);
+  assert.equal((await stateOf()).moneyRate, 1, 'ค่าเริ่มต้น 1 ดาว = 1 บาท');
+
+  assert.equal((await kidPhone.post('/api/requests', { kidId: kidA, baht: available + 1 })).status, 409, 'เกินดาวที่มี');
+  assert.equal((await kidPhone.post('/api/requests', { kidId: kidA, baht: 0 })).status, 400);
+  assert.equal((await kidPhone.post('/api/requests', { kidId: kidA, baht: 2.5 })).status, 400);
+
+  assert.equal((await kidPhone.put('/api/parent/money-rate', { rate: 2 })).status, 401, 'เด็กตั้งอัตราเองไม่ได้');
+  assert.equal((await mom.put('/api/parent/money-rate', { rate: 2 })).status, 200);
+  const res = await kidPhone.post('/api/requests', { kidId: kidA, baht: 5 });
+  assert.equal(res.status, 200);
+  const r = (await stateOf()).requests.find((x) => x.id === res.body.id);
+  assert.equal(r.name, 'เงิน 5 บาท');
+  assert.equal(r.cost, 3, '5 บาท ที่ 2 บาท/ดาว ปัดขึ้นเป็น 3 ดาว');
+  assert.equal(r.status, 'pending');
+  assert.equal((await kidPhone.post(`/api/requests/${r.id}/cancel`)).status, 200);
+
+  assert.equal((await mom.put('/api/parent/money-rate', { rate: 0 })).status, 200);
+  assert.equal((await kidPhone.post('/api/requests', { kidId: kidA, baht: 1 })).status, 409, 'ปิดแล้วขอไม่ได้');
+  assert.equal((await mom.put('/api/parent/money-rate', { rate: 1 })).status, 200);
+});
+
 test('เปลี่ยนรหัสครอบครัวแล้วเครื่องอื่นหลุด', async () => {
   assert.equal((await mom.put('/api/parent/pin', { currentPin: '0000', newPin: '4321' })).status, 400);
   assert.equal((await mom.put('/api/parent/pin', { currentPin: '1234', newPin: '4321' })).status, 200);

@@ -82,6 +82,16 @@ export function createApp(db, { appUrl, distDir } = {}) {
   const mustReward = (id) => q.reward.get(Number(id)) ?? (() => { throw new HttpError(404, 'ไม่พบของรางวัลนี้'); })();
   const changed = (what) => broadcast({ type: 'change', what });
 
+  // แลกเป็นเงินแบบกรอกจำนวนเอง — 1 ดาว = moneyRate บาท (0 = ผู้ปกครองปิดไว้) ค่าเริ่มต้น 1
+  const moneyRate = () => Number(getSetting(db, 'money_rate') ?? 1);
+  function moneyReward(value) {
+    const rate = moneyRate();
+    if (!rate) throw new HttpError(409, 'ผู้ปกครองปิดการแลกเป็นเงินไว้');
+    const baht = wholeNumber(value, 'จำนวนเงิน', 100000);
+    // ไม่มีเศษดาว — ปัดขึ้น เช่น 1 ดาว = 2 บาท ขอ 5 บาท ใช้ 3 ดาว
+    return { id: null, category: 'money', emoji: '💵', name: `เงิน ${baht.toLocaleString('en-US')} บาท`, cost: Math.ceil(baht / rate) };
+  }
+
   function kidStars(kidId) {
     const balance = q.balance.get(kidId).v;
     return { balance, available: balance - q.reserved.get(kidId).v };
@@ -124,6 +134,7 @@ export function createApp(db, { appUrl, distDir } = {}) {
       rewards: q.rewards.all(),
       requests: q.requests.all(),
       timeRequests: screen.pendingTimeRequests(),
+      moneyRate: moneyRate(),
       pushKey: push.publicKey,
     };
   }
@@ -181,7 +192,8 @@ export function createApp(db, { appUrl, distDir } = {}) {
 
   app.post('/api/requests', device, (req, res) => {
     const kid = mustKid(req.body.kidId);
-    const id = createRequest(kid, mustReward(req.body.rewardId));
+    const reward = req.body.baht !== undefined ? moneyReward(req.body.baht) : mustReward(req.body.rewardId);
+    const id = createRequest(kid, reward);
     screen.pokeKid(kid.id); // ดาวที่ใช้ได้บนหน้าล็อคมือถือลดลง
     res.json({ id });
   });
@@ -529,6 +541,13 @@ export function createApp(db, { appUrl, distDir } = {}) {
     db.prepare('DELETE FROM rewards WHERE id = ?').run(Number(req.params.id));
     changed('rewards');
     screen.pokeAll();
+    res.json({ ok: true });
+  });
+
+  P.put('/money-rate', (req, res) => {
+    const rate = req.body.rate === 0 ? 0 : wholeNumber(req.body.rate, 'จำนวนบาทต่อดาว', 1000);
+    setSetting(db, 'money_rate', rate);
+    changed('rewards');
     res.json({ ok: true });
   });
 

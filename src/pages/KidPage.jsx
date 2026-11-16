@@ -86,7 +86,7 @@ export default function KidPage() {
 
       <div className="mt-4">
         {tab === 'rewards' ? (
-          <Rewards kid={kid} rewards={data.rewards} available={available} />
+          <Rewards kid={kid} rewards={data.rewards} available={available} moneyRate={data.moneyRate ?? 1} />
         ) : !history.loaded ? (
           <Spinner />
         ) : history.items.length === 0 ? (
@@ -152,14 +152,21 @@ function RequestStatus({ requests }) {
   );
 }
 
-function Rewards({ kid, rewards, available }) {
+function Rewards({ kid, rewards: allRewards, available, moneyRate }) {
   const [cat, setCat] = useState('all');
   const [asking, setAsking] = useState(null);
+  const [moneyOpen, setMoneyOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const cats = useMemo(() => Object.keys(CATEGORIES).filter((c) => rewards.some((r) => r.category === c)), [rewards]);
+  // การ์ดเงินราคาตายตัวไม่แสดงในหน้าเด็ก — ใช้การ์ด "แลกเป็นเงิน" ที่กรอกจำนวนเองแทน
+  const rewards = useMemo(() => allRewards.filter((r) => r.category !== 'money'), [allRewards]);
+  const cats = useMemo(
+    () => Object.keys(CATEGORIES).filter((c) => (c === 'money' ? moneyRate > 0 : rewards.some((r) => r.category === c))),
+    [rewards, moneyRate],
+  );
   const shown = cat === 'all' ? rewards : rewards.filter((r) => r.category === cat);
+  const showMoney = moneyRate > 0 && (cat === 'all' || cat === 'money');
 
-  if (!rewards.length) return <Empty emoji="🎁" title="ยังไม่มีของรางวัล">ให้ผู้ปกครองเพิ่มของรางวัลในหน้าตั้งค่า</Empty>;
+  if (!rewards.length && !moneyRate) return <Empty emoji="🎁" title="ยังไม่มีของรางวัล">ให้ผู้ปกครองเพิ่มของรางวัลในหน้าตั้งค่า</Empty>;
 
   async function ask() {
     setBusy(true);
@@ -193,6 +200,7 @@ function Rewards({ kid, rewards, available }) {
         </div>
       )}
       <div className="grid grid-cols-2 gap-3">
+        {showMoney && <MoneyCard rate={moneyRate} available={available} onOpen={() => setMoneyOpen(true)} />}
         {shown.map((r) => {
           const can = available >= r.cost;
           const need = r.cost - available; // ติดลบอยู่ก็ต้องเก็บคืนให้ถึง 0 ก่อน
@@ -249,7 +257,116 @@ function Rewards({ kid, rewards, available }) {
           </div>
         )}
       </Sheet>
+      <MoneySheet open={moneyOpen} onClose={() => setMoneyOpen(false)} kid={kid} rate={moneyRate} available={available} />
     </>
+  );
+}
+
+function MoneyCard({ rate, available, onOpen }) {
+  const can = available >= 1;
+  return (
+    <button
+      onClick={() => (can ? onOpen() : toast(`ยังขาดอีก ${1 - available} ดาว สู้ๆ! 💪`, { icon: '⭐' }))}
+      className={`card flex flex-col items-center gap-1.5 px-3 pb-3 pt-4 text-center transition-transform active:scale-95 ${can ? 'border-pink-500 bg-pink-50' : ''}`}
+    >
+      <span className={`text-5xl ${can ? '' : 'opacity-60 grayscale-[35%]'}`}>💵</span>
+      <span className="line-clamp-2 min-h-[2.7em] text-[15px] font-semibold leading-snug">แลกเป็นเงิน</span>
+      <span className="flex items-center gap-1 rounded-full bg-sunken px-3 py-0.5 text-[15px] font-semibold">
+        <StarCount value={1} size={16} /> = {rate} บาท
+      </span>
+      {can ? (
+        <span className="mt-1 text-sm font-bold text-purple-600">แตะเพื่อขอแลก</span>
+      ) : (
+        <span className="mt-1 text-xs text-mute">อีก {1 - available} ดาว</span>
+      )}
+    </button>
+  );
+}
+
+function MoneySheet({ open, onClose, kid, rate, available }) {
+  const [amount, setAmount] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (open) setAmount('');
+  }, [open]);
+
+  const max = Math.max(0, available) * rate; // ไม่เกินดาวที่มี (หักดาวที่จองไว้กับคำขออื่นแล้ว)
+  const baht = parseInt(amount, 10) || 0;
+  const cost = Math.ceil(baht / rate);
+  const over = baht > max;
+  const ok = baht >= 1 && !over;
+  const quick = [...[20, 50, 100].filter((v) => v < max), max];
+
+  async function ask() {
+    setBusy(true);
+    try {
+      await api.post('/api/requests', { kidId: kid.id, baht });
+      toast.success('ส่งคำขอแล้ว รอผู้ปกครองอนุมัตินะ ⏳');
+      onClose();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="แลกดาวเป็นเงิน"
+      footer={
+        <div className="flex gap-3">
+          <button className="btn btn-soft flex-1" onClick={onClose}>
+            ยังก่อน
+          </button>
+          <button className="btn btn-primary flex-[2] text-lg" onClick={ask} disabled={busy || !ok}>
+            ขอแลกเลย 🙏
+          </button>
+        </div>
+      }
+    >
+      <div className="pb-2 text-center">
+        <div className="my-2 text-6xl">💵</div>
+        <label htmlFor="money-amount" className="text-lg font-bold">
+          อยากได้เงินกี่บาท?
+        </label>
+        <div className="mt-3 flex items-center justify-center gap-2">
+          <input
+            id="money-amount"
+            className={`field w-40 text-center text-3xl font-bold tabular ${over ? 'text-bad' : ''}`}
+            inputMode="numeric"
+            placeholder="0"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 6))}
+            aria-describedby="money-hint"
+          />
+          <span className="text-xl font-bold">บาท</span>
+        </div>
+        <div className="mt-3 flex flex-wrap justify-center gap-2">
+          {quick.map((v, i) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setAmount(String(v))}
+              aria-pressed={baht === v}
+              className={`rounded-full px-3 py-1.5 text-[15px] font-semibold ${baht === v ? 'bg-purple-600 text-on-primary' : 'chip-off'}`}
+            >
+              {i === quick.length - 1 ? `ทั้งหมด ${v.toLocaleString()}` : v}
+            </button>
+          ))}
+        </div>
+        <p id="money-hint" className={`mt-3 text-[15px] ${over ? 'font-semibold text-bad' : 'text-mute'}`}>
+          {over ? 'เกินดาวที่มี — ' : ''}ได้สูงสุด {max.toLocaleString()} บาท
+        </p>
+        {ok && (
+          <p className="mt-2 flex items-center justify-center gap-2 text-mute">
+            ใช้ <StarCount value={cost} size={18} className="text-ink" /> · เหลือ <StarCount value={available - cost} size={18} className="text-ink" />
+          </p>
+        )}
+        <p className="mt-3 text-sm text-mute">ผู้ปกครองต้องกดอนุมัติก่อน ดาวถึงจะถูกใช้นะ</p>
+      </div>
+    </Sheet>
   );
 }
 

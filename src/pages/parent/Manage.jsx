@@ -326,8 +326,19 @@ function ActivityEditor({ activity, onClose }) {
 function RewardsTab() {
   const { data } = useStore();
   const [editing, setEditing] = useState(null);
+  const [rateOpen, setRateOpen] = useState(false);
+  const rate = data.moneyRate ?? 1;
   return (
     <section>
+      <ul className="card mb-4 rounded-2xl">
+        <Row
+          onClick={() => setRateOpen(true)}
+          left={<span className="w-9 text-center text-2xl">💵</span>}
+          title="แลกเป็นเงิน"
+          sub={rate ? `1 ดาว = ${rate} บาท · เด็กกรอกจำนวนเอง` : 'ปิดอยู่ — เด็กแลกเป็นเงินไม่ได้'}
+        />
+      </ul>
+      <MoneyRateSheet open={rateOpen} rate={rate} onClose={() => setRateOpen(false)} />
       <p className="mb-3 px-1 text-sm text-mute">เรียงจากดาวน้อยไปมาก — ของยิ่งแพง ยิ่งต้องใช้ดาวเยอะ</p>
       {data.rewards.length > 0 && (
         <ul className="card divide-y divide-hair rounded-2xl">
@@ -337,7 +348,7 @@ function RewardsTab() {
               onClick={() => setEditing(r)}
               left={<span className="w-9 text-center text-2xl">{r.emoji}</span>}
               title={r.name}
-              sub={`${CATEGORIES[r.category]?.label}${r.minutes ? ` · 📱 +${duration(r.minutes * 60)}` : ''}`}
+              sub={`${CATEGORIES[r.category]?.label}${r.minutes ? ` · 📱 +${duration(r.minutes * 60)}` : ''}${r.category === 'money' ? ' · ไม่แสดงในหน้าเด็ก' : ''}`}
               right={<StarCount value={r.cost} size={18} />}
             />
           ))}
@@ -346,6 +357,49 @@ function RewardsTab() {
       <AddButton onClick={() => setEditing({ category: 'snack' })}>เพิ่มของรางวัล</AddButton>
       <RewardEditor reward={editing} onClose={() => setEditing(null)} />
     </section>
+  );
+}
+
+function MoneyRateSheet({ open, rate, onClose }) {
+  const [on, setOn] = useState('on');
+  const [value, setValue] = useState(1);
+  useEffect(() => {
+    if (!open) return;
+    setOn(rate ? 'on' : 'off');
+    setValue(rate || 1);
+  }, [open, rate]);
+
+  return (
+    <EditorSheet
+      open={open}
+      title="แลกเป็นเงิน"
+      onClose={onClose}
+      onSave={async () => {
+        await api.put('/api/parent/money-rate', { rate: on === 'on' ? value : 0 });
+        toast.success('บันทึกแล้ว');
+      }}
+    >
+      <Segmented
+        value={on}
+        onChange={setOn}
+        options={[
+          { value: 'on', label: 'เปิด' },
+          { value: 'off', label: 'ปิด' },
+        ]}
+      />
+      {on === 'on' ? (
+        <div>
+          <span className="label">1 ดาว = กี่บาท</span>
+          <Stepper value={value} onChange={setValue} min={1} max={1000} />
+          <p className="mt-1.5 text-sm text-mute">
+            เด็กกรอกจำนวนเงินเองได้ไม่เกินดาวที่มี เช่น มี 30 ดาว ขอได้สูงสุด {(30 * value).toLocaleString()} บาท · ผู้ปกครองต้องอนุมัติก่อนเหมือนรางวัลอื่น
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm text-mute">หน้าเด็กจะไม่มีการ์ดแลกเป็นเงิน คำขอที่ส่งมาแล้วยังอนุมัติได้ตามปกติ</p>
+      )}
+      <p className="text-sm text-mute">ของรางวัลหมวดเงินแบบราคาตายตัวจะไม่แสดงในหน้าเด็ก แต่ยังใช้ตอนผู้ปกครองกด "แลกให้" ได้</p>
+    </EditorSheet>
   );
 }
 
