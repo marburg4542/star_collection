@@ -153,6 +153,7 @@ export function createApp(db, { appUrl, distDir, mediaDir } = {}) {
       rewards: q.rewards.all(),
       requests: q.requests.all(),
       timeRequests: screen.pendingTimeRequests(),
+      appRequests: screen.pendingAppRequests(),
       moneyRate: moneyRate(),
       pushKey: push.publicKey,
     };

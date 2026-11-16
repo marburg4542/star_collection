@@ -299,6 +299,43 @@ const MIGRATIONS = [
       CREATE INDEX vocab_attempts_set_kid ON vocab_attempts(set_id, kid_id);
     `);
   },
+
+  // บล็อคแอป (แอป 2.8): แอปที่ห้ามเปิด → คำขอใช้ชั่วคราวจากหน้าบล็อค → ครั้งที่เด็กพยายามเปิด (เก็บ 30 วัน)
+  (db) => {
+    db.exec(`
+      CREATE TABLE app_blocks (
+        kid_id INTEGER NOT NULL REFERENCES kids(id) ON DELETE CASCADE,
+        pkg TEXT NOT NULL,
+        label TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT ${NOW},
+        PRIMARY KEY (kid_id, pkg)
+      );
+      CREATE TABLE app_requests (
+        id INTEGER PRIMARY KEY,
+        kid_id INTEGER NOT NULL REFERENCES kids(id) ON DELETE CASCADE,
+        phone_id INTEGER REFERENCES phones(id) ON DELETE SET NULL,
+        pkg TEXT NOT NULL,
+        label TEXT NOT NULL,
+        minutes INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+        until TEXT,
+        created_at TEXT NOT NULL DEFAULT ${NOW},
+        decided_at TEXT
+      );
+      CREATE INDEX app_requests_kid ON app_requests(kid_id, status);
+      CREATE TABLE app_block_hits (
+        id INTEGER PRIMARY KEY,
+        phone_id INTEGER NOT NULL REFERENCES phones(id) ON DELETE CASCADE,
+        day TEXT NOT NULL,
+        pkg TEXT NOT NULL,
+        label TEXT NOT NULL,
+        client_id TEXT,
+        at TEXT NOT NULL,
+        UNIQUE (phone_id, client_id)
+      );
+      CREATE INDEX app_block_hits_day ON app_block_hits(day, pkg);
+    `);
+  },
 ];
 
 export function minutesFromName(name) {

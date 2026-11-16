@@ -37,7 +37,7 @@ export function createVocab({ db, push, changed, mustKid, device, awardStars, me
     set: db.prepare('SELECT * FROM vocab_sets WHERE id = ?'),
     setKids: db.prepare('SELECT set_id AS setId, kid_id AS kidId FROM vocab_set_kids'),
     words: db.prepare(
-      'SELECT id, set_id AS setId, word, meaning, reading, example, emoji, image FROM vocab_words ORDER BY set_id, sort_order, id',
+      'SELECT id, set_id AS setId, word, meaning, example, emoji, image FROM vocab_words ORDER BY set_id, sort_order, id',
     ),
     wordsOf: db.prepare('SELECT * FROM vocab_words WHERE set_id = ? ORDER BY sort_order, id'),
     word: db.prepare('SELECT * FROM vocab_words WHERE id = ?'),
@@ -191,7 +191,6 @@ export function createVocab({ db, push, changed, mustKid, device, awardStars, me
     return {
       word,
       meaning: text(b.meaning, 'คำแปลภาษาไทย', 80),
-      reading: optionalText(b.reading, 60),
       example: optionalText(b.example, 200),
       emoji: b.emoji ? emoji(b.emoji, null) : null,
       image,
@@ -238,8 +237,8 @@ export function createVocab({ db, push, changed, mustKid, device, awardStars, me
       if (s.wordsOf.all(set.id).length >= MAX_WORDS) throw new HttpError(409, `ชุดหนึ่งใส่ได้ไม่เกิน ${MAX_WORDS} คำ`);
       const w = wordBody(req.body);
       const { lastInsertRowid } = db
-        .prepare('INSERT INTO vocab_words (set_id, word, meaning, reading, example, emoji, image, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(set.id, w.word, w.meaning, w.reading, w.example, w.emoji, w.image, s.nextWordOrder.get(set.id).n);
+        .prepare('INSERT INTO vocab_words (set_id, word, meaning, example, emoji, image, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .run(set.id, w.word, w.meaning, w.example, w.emoji, w.image, s.nextWordOrder.get(set.id).n);
       changed('vocab');
       res.json({ id: Number(lastInsertRowid) });
     });
@@ -247,10 +246,9 @@ export function createVocab({ db, push, changed, mustKid, device, awardStars, me
     P.put('/vocab/words/:wordId', (req, res) => {
       const old = mustWord(req.params.wordId);
       const w = wordBody(req.body);
-      db.prepare('UPDATE vocab_words SET word = ?, meaning = ?, reading = ?, example = ?, emoji = ?, image = ? WHERE id = ?').run(
+      db.prepare('UPDATE vocab_words SET word = ?, meaning = ?, reading = NULL, example = ?, emoji = ?, image = ? WHERE id = ?').run(
         w.word,
         w.meaning,
-        w.reading,
         w.example,
         w.emoji,
         w.image,

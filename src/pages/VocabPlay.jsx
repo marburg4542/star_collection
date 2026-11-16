@@ -5,7 +5,7 @@ import { api } from '../lib/api.js';
 import { useStore } from '../lib/store.jsx';
 import { canSpeak, passCount, shuffle, speak, speakLetters, useVocab } from '../lib/vocab.js';
 import { Spinner, StarCount } from '../components/ui.jsx';
-import { Spelling, WordPicture } from '../components/Vocab.jsx';
+import { WordPicture } from '../components/Vocab.jsx';
 
 export default function VocabPlay() {
   const { id, setId } = useParams();
@@ -111,9 +111,9 @@ function Flashcards({ set }) {
           <span key={`b${w.id}`} className="flex w-full animate-pop flex-col items-center gap-3">
             <WordPicture word={w} size={84} />
             <span className="text-4xl font-bold">{w.meaning}</span>
-            {w.reading && <span className="text-lg text-mute">อ่านว่า “{w.reading}”</span>}
-            <span className="mt-1 text-sm text-mute">สะกดว่า</span>
-            <Spelling word={w.word} />
+            <span className="text-2xl font-semibold text-mute" lang="en">
+              {w.word}
+            </span>
             {w.example && (
               <span className="mt-2 w-full rounded-2xl bg-sunken px-4 py-3 text-left text-[17px]" lang="en">
                 {w.example}
@@ -371,8 +371,12 @@ function Test({ set, sets, kid, back, onRetry }) {
             ) : (
               <>
                 <p className="text-xl font-bold text-bad">❌ ยังไม่ถูก</p>
-                <p className="mt-2 mb-1.5 text-sm text-mute">{q.mode === 'choice' ? `${q.word.word} แปลว่า “${q.word.meaning}”` : 'คำที่ถูกคือ'}</p>
-                {q.mode === 'spell' && <Spelling word={q.word.word} />}
+                <p className="mt-2 text-sm text-mute">{q.mode === 'choice' ? `${q.word.word} แปลว่า “${q.word.meaning}”` : 'คำที่ถูกคือ'}</p>
+                {q.mode === 'spell' && (
+                  <p className="text-3xl font-bold text-good" lang="en">
+                    {q.word.word}
+                  </p>
+                )}
               </>
             )}
           </div>

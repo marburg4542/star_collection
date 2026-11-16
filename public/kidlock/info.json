@@ -1,7 +1,7 @@
 {
-  "version": "2.7",
-  "apk": "/kidlock/kidlock-2.7.apk",
+  "version": "2.8",
+  "apk": "/kidlock/kidlock-2.8.apk",
   "component": "site.personalproj.kidlock/.admin.KidLockAdminReceiver",
   "checksum": "Q-I54xZDjQSjArtJnVoP5YZr_Rze3ZRYmZYZTYaanQA",
-  "sha256": "67a675492bf227a631752b7eed06e221c7d2a094df0ad8513b9105996ddd8930"
+  "sha256": "2d008ce7673c031c3303ddefe5a2b9e6624db86c85d2dffc6ed077041aa76cf3"
 }

@@ -195,7 +195,7 @@ test('เกมคำศัพท์: สร้างชุด ใส่รู�
   assert.ok(fs.existsSync(path.join(mediaDir, up.body.image)));
 
   const words = [
-    { word: 'apple', meaning: 'แอปเปิ้ล', reading: 'แอป-เปิ้ล', example: 'I eat an apple.', emoji: '🍎', image: up.body.image },
+    { word: 'apple', meaning: 'แอปเปิ้ล', example: 'I eat an apple.', emoji: '🍎', image: up.body.image },
     { word: 'banana', meaning: 'กล้วย', emoji: '🍌' },
     { word: 'cat', meaning: 'แมว', emoji: '🐱' },
     { word: 'ice cream', meaning: 'ไอศกรีม' },
@@ -209,7 +209,8 @@ test('เกมคำศัพท์: สร้างชุด ใส่รู�
   const set = list.find((s) => s.id === setId);
   assert.deepEqual(set.kidIds, [kidA]);
   assert.equal(set.words.length, 5);
-  assert.equal(set.words[0].reading, 'แอป-เปิ้ล');
+  assert.equal(set.words[0].example, 'I eat an apple.');
+  assert.ok(!('reading' in set.words[0]), 'ไม่มีคำอ่านภาษาไทยแล้ว');
   assert.equal((await stranger.get('/api/vocab')).status, 401);
 
   // รูปเปิดได้จากเครื่องในครอบครัวเท่านั้น
@@ -635,6 +636,77 @@ test('แจ้งผู้ปกครองเมื่อสิทธิ์�
     await phone.get('/api/phone/state'); // เครื่องกลับมา
     assert.deepEqual(checkSilent(T + 30 * 60_000), []);
     assert.deepEqual(checkSilent(T + 61 * 60_000), [p.id], 'กลับมาแล้วเงียบอีก → แจ้งใหม่');
+  } finally {
+    app.locals.push.notify = realNotify;
+  }
+});
+
+test('บล็อคแอป: เลือกแอปที่ห้ามเปิด, แจ้งครั้งแรกของวัน, เด็กขอใช้ชั่วคราว', async () => {
+  const sent = [];
+  const realNotify = app.locals.push.notify;
+  app.locals.push.notify = (target, payload) => sent.push({ target, payload });
+  try {
+    const tiktok = { pkg: 'com.zhiliaoapp.musically', label: 'TikTok' };
+    const roblox = { pkg: 'com.roblox.client', label: 'Roblox' };
+    const blockUrl = `/api/parent/kids/${kidA}/app-blocks`;
+    assert.equal((await kidPhone.put(blockUrl, { apps: [tiktok] })).status, 401, 'เด็กตั้งเองไม่ได้');
+    assert.equal((await mom.put(blockUrl, { apps: [{ pkg: 'not a package' }] })).status, 400);
+    assert.equal((await mom.put(blockUrl, { apps: [{ pkg: 'site.personalproj.kidlock', label: 'ล็อคจอ' }] })).status, 400, 'บล็อคแอปตัวเองไม่ได้');
+    assert.equal((await mom.put(blockUrl, { apps: [tiktok, roblox] })).status, 200);
+
+    let st = (await phone.get('/api/phone/state')).body.appBlock;
+    assert.deepEqual(st.blocked.map((a) => a.pkg).sort(), [roblox.pkg, tiktok.pkg]);
+    assert.deepEqual(st.passes, []);
+
+    // พยายามเปิด: แจ้งครั้งแรกของวันต่อแอป · client_id ซ้ำไม่นับซ้ำ
+    sent.length = 0;
+    const hit = (pkg, clientId) => phone.post('/api/phone/app-blocks', { pkg, label: 'TikTok', clientId, at: new Date().toISOString() });
+    assert.equal((await hit(tiktok.pkg, 'h1')).status, 200);
+    await hit(tiktok.pkg, 'h1');
+    await hit(tiktok.pkg, 'h2');
+    assert.equal(sent.length, 1, 'แจ้งครั้งเดียวต่อวันต่อแอป');
+    assert.match(sent[0].payload.title, /น้องเอ พยายามเปิด TikTok/);
+    await hit(roblox.pkg, 'h3');
+    assert.equal(sent.length, 2, 'แอปอื่นแจ้งแยก');
+    const info = (await mom.get('/api/parent/phones')).body;
+    const kidInfo = info.kids[kidA];
+    assert.equal(kidInfo.blockedApps.length, 2);
+    assert.deepEqual(kidInfo.blockHits.find((h) => h.pkg === tiktok.pkg).count, 2);
+
+    // เด็กขอใช้ → ผู้ปกครองอนุญาต 30 นาที → เครื่องได้ pass
+    assert.equal((await phone.post('/api/phone/app-requests', { pkg: tiktok.pkg, minutes: 45 })).status, 400);
+    assert.equal((await phone.post('/api/phone/app-requests', { pkg: 'com.whatsapp', minutes: 30 })).status, 409, 'แอปที่ไม่ได้บล็อคขอไม่ได้');
+    sent.length = 0;
+    const req1 = await phone.post('/api/phone/app-requests', { pkg: tiktok.pkg, minutes: 30 });
+    assert.equal(req1.status, 200);
+    assert.match(sent[0].payload.title, /ขอใช้ TikTok 30 นาที/);
+    assert.equal((await phone.post('/api/phone/app-requests', { pkg: tiktok.pkg, minutes: 15 })).status, 409, 'รอคำตอบก่อน');
+    assert.equal((await mom.get('/api/state')).body.appRequests.length, 1, 'ขึ้นป้ายในหน้าผู้ปกครอง');
+    assert.equal((await kidPhone.post(`/api/parent/app-requests/${req1.body.id}/approve`)).status, 401);
+    const ok = await mom.post(`/api/parent/app-requests/${req1.body.id}/approve`);
+    assert.equal(ok.status, 200);
+    assert.ok(Math.abs(Date.parse(ok.body.until) - Date.now() - 30 * 60_000) < 5_000);
+    st = (await phone.get('/api/phone/state')).body.appBlock;
+    assert.deepEqual(st.passes.map((p) => p.pkg), [tiktok.pkg]);
+    assert.equal(st.requests.find((r) => r.id === req1.body.id).status, 'approved');
+    assert.equal((await mom.post(`/api/parent/app-requests/${req1.body.id}/approve`)).status, 409, 'ตอบซ้ำไม่ได้');
+
+    // หยุดก่อนหมดเวลา
+    const pass = (await mom.get('/api/parent/phones')).body.kids[kidA].appPasses[0];
+    assert.equal(pass.pkg, tiktok.pkg);
+    assert.equal((await mom.post(`/api/parent/app-requests/${pass.id}/end`)).status, 200);
+    assert.deepEqual((await phone.get('/api/phone/state')).body.appBlock.passes, []);
+
+    // ไม่อนุญาต · เลิกบล็อคแอป → คำขอที่ค้างของแอปนั้นถูกปิดให้
+    const req2 = await phone.post('/api/phone/app-requests', { pkg: roblox.pkg, minutes: 15 });
+    assert.equal((await mom.post(`/api/parent/app-requests/${req2.body.id}/reject`)).status, 200);
+    const req3 = await phone.post('/api/phone/app-requests', { pkg: tiktok.pkg, minutes: 60 });
+    assert.equal((await mom.put(blockUrl, { apps: [roblox] })).status, 200);
+    st = (await phone.get('/api/phone/state')).body.appBlock;
+    assert.deepEqual(st.blocked.map((a) => a.pkg), [roblox.pkg]);
+    assert.equal(st.requests.find((r) => r.id === req3.body.id).status, 'rejected');
+    assert.equal((await mom.get('/api/state')).body.appRequests.length, 0);
+    assert.equal((await mom.put(blockUrl, { apps: [] })).status, 200);
   } finally {
     app.locals.push.notify = realNotify;
   }

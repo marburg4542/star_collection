@@ -75,6 +75,7 @@ export default function Phones() {
 
   const byKid = data.kids.map((k) => ({ kid: k, phones: info.phones.filter((p) => p.kidId === k.id) })).filter((g) => g.phones.length);
   const requests = info.timeRequests.filter((r) => r.status === 'pending');
+  const appRequests = info.appRequests ?? [];
 
   return (
     <div>
@@ -102,10 +103,13 @@ export default function Phones() {
         </Suspense>
       )}
 
-      {requests.length > 0 && (
+      {requests.length + appRequests.length > 0 && (
         <ul className="mb-5 space-y-3">
           {requests.map((r) => (
             <TimeRequestCard key={r.id} request={r} kid={kidById(r.kidId)} onDone={load} />
+          ))}
+          {appRequests.map((r) => (
+            <AppRequestCard key={`app-${r.id}`} request={r} kid={kidById(r.kidId)} onDone={load} />
           ))}
         </ul>
       )}
@@ -170,6 +174,47 @@ function TimeRequestCard({ request, kid, onDone }) {
   );
 }
 
+// ---------- คำขอใช้แอปที่บล็อค ----------
+
+function AppRequestCard({ request, kid, onDone }) {
+  const [busy, setBusy] = useState(false);
+  async function decide(action) {
+    setBusy(true);
+    try {
+      await api.post(`/api/parent/app-requests/${request.id}/${action}`);
+      toast.success(action === 'approve' ? `ให้${kid?.name ?? ''}ใช้ ${request.label} ${request.minutes} นาทีแล้ว` : 'แจ้งเครื่องลูกแล้ว');
+      onDone();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <li className="card animate-rise rounded-2xl p-4">
+      <div className="flex items-center gap-3">
+        <Avatar kid={kid} size={44} />
+        <div className="min-w-0 flex-1">
+          <p className="font-bold">
+            {kid?.name} ขอใช้ {request.label} {request.minutes} นาที
+          </p>
+          <p className="text-[13px] text-mute">
+            🚫 แอปนี้ถูกบล็อคอยู่ · {dayLabel(request.createdAt)} {timeOf(request.createdAt)}
+          </p>
+        </div>
+      </div>
+      <div className="mt-3 flex gap-2">
+        <button className="btn btn-soft flex-1 whitespace-nowrap" onClick={() => decide('reject')} disabled={busy}>
+          ✗ ไม่ให้
+        </button>
+        <button className="btn btn-primary flex-[1.6] whitespace-nowrap" onClick={() => decide('approve')} disabled={busy}>
+          ✓ ให้ใช้ {request.minutes} นาที
+        </button>
+      </div>
+    </li>
+  );
+}
+
 // ---------- การ์ดของเด็กแต่ละคน ----------
 
 function KidCard({ kid, phones, info, today, appLatest, onChanged }) {
@@ -227,12 +272,18 @@ function KidCard({ kid, phones, info, today, appLatest, onChanged }) {
         <button className="btn btn-soft min-h-11 whitespace-nowrap px-2 text-sm" onClick={() => setSheet('rules')}>
           ⚙️ กติกา
         </button>
+        <button className="btn btn-soft col-span-2 min-h-11 whitespace-nowrap px-2 text-sm" onClick={() => setSheet('apps')}>
+          🚫 บล็อคแอป
+          {info.blockedApps?.length > 0 && <span className="text-mute"> · บล็อคอยู่ {info.blockedApps.length} แอป</span>}
+          {info.appPasses?.length > 0 && <span className="text-purple-600"> · ปลดชั่วคราว {info.appPasses.length}</span>}
+        </button>
       </div>
 
       <ReportSheet open={sheet === 'report'} kid={kid} rules={rules} onClose={() => setSheet(null)} />
       <GrantSheet open={sheet === 'grant'} kid={kid} info={info} limit={limit} onClose={() => setSheet(null)} onDone={onChanged} />
       <PauseSheet open={sheet === 'pause'} kid={kid} paused={paused} onClose={() => setSheet(null)} onDone={onChanged} />
       <RulesSheet open={sheet === 'rules'} kid={kid} info={info} onClose={() => setSheet(null)} onDone={onChanged} />
+      <AppBlockSheet open={sheet === 'apps'} kid={kid} info={info} phones={phones} onClose={() => setSheet(null)} onDone={onChanged} />
       <PhoneMenu phone={sheet?.phone ?? null} onClose={() => setSheet(null)} onDone={onChanged} />
     </section>
   );
@@ -1094,6 +1145,144 @@ function BedtimeField({ label, value, onChange, fallback }) {
         </div>
       )}
     </div>
+  );
+}
+
+// ---------- บล็อคแอป (แอปล็อคจอ 2.8+) ----------
+
+function AppBlockSheet({ open, kid, info, phones, onClose, onDone }) {
+  const blockedApps = info.blockedApps ?? [];
+  const [blocked, setBlocked] = useState(() => new Map());
+  const [search, setSearch] = useState('');
+  const [busy, run] = useAction(onDone, onClose);
+  const [ending, setEnding] = useState(null);
+  useEffect(() => {
+    if (open) {
+      setBlocked(new Map(blockedApps.map((a) => [a.pkg, a.label])));
+      setSearch('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // แอปในเครื่อง + แอปที่บล็อคไว้แต่ลบออกจากเครื่องไปแล้ว · ที่บล็อคอยู่ขึ้นก่อน
+  const apps = useMemo(() => {
+    const all = new Map(info.apps.map((a) => [a.pkg, a]));
+    for (const a of blockedApps) if (!all.has(a.pkg)) all.set(a.pkg, a);
+    const term = search.trim().toLowerCase();
+    const was = new Set(blockedApps.map((a) => a.pkg));
+    return [...all.values()]
+      .filter((a) => !term || a.label.toLowerCase().includes(term) || a.pkg.includes(term))
+      .sort((a, b) => (was.has(b.pkg) ? 1 : 0) - (was.has(a.pkg) ? 1 : 0) || a.label.localeCompare(b.label, 'th'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [info.apps, blockedApps, search, open]);
+
+  const allowed = new Set(info.rules.allowed);
+  const old = phones.filter((p) => !p.releasing && p.report?.version && olderVersion(p.report.version, '2.8'));
+  const hits = info.blockHits ?? [];
+  const passes = info.appPasses ?? [];
+
+  function toggle(app, on) {
+    setBlocked((m) => {
+      const next = new Map(m);
+      if (on) next.set(app.pkg, app.label);
+      else next.delete(app.pkg);
+      return next;
+    });
+  }
+
+  async function endPass(pass) {
+    setEnding(pass.id);
+    try {
+      await api.post(`/api/parent/app-requests/${pass.id}/end`);
+      toast.success(`บล็อค ${pass.label} อีกครั้งแล้ว`);
+      onDone();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setEnding(null);
+    }
+  }
+
+  function save(e) {
+    e.preventDefault();
+    const list = [...blocked].map(([pkg, label]) => ({ pkg, label }));
+    run(() => api.put(`/api/parent/kids/${kid.id}/app-blocks`, { apps: list }), list.length ? `บล็อค ${list.length} แอปแล้ว — มือถือได้รับทันทีที่ต่อเน็ต` : 'เลิกบล็อคแอปทั้งหมดแล้ว');
+  }
+
+  return (
+    <Sheet open={open} onClose={onClose} title={`บล็อคแอปของ${kid.name}`}>
+      <form onSubmit={save} className="space-y-5 pb-3">
+        <p className="text-sm text-mute">
+          แอปที่บล็อคจะเปิดไม่ได้ตลอดเวลา แม้ยังมีเวลาเล่นเหลือ · ลูกกด “ขอใช้” จากหน้าบล็อคได้ แล้วคุณอนุญาตชั่วคราวจากหน้านี้ · ลูกพยายามเปิด → แจ้งครั้งแรกของวัน
+        </p>
+        {old.length > 0 && (
+          <p className="rounded-2xl bg-bad-soft px-3 py-2.5 text-sm text-bad">
+            ⬆️ ต้องใช้แอปล็อคจอรุ่น 2.8 ขึ้นไป — {old.map((p) => `${p.name} (รุ่น ${p.report.version})`).join(', ')} ยังบล็อคแอปไม่ได้ กด “อัปเดตแอป” ที่เครื่องนั้นก่อน
+          </p>
+        )}
+
+        {passes.length > 0 && (
+          <div>
+            <span className="label">ใช้ได้ชั่วคราวตอนนี้</span>
+            <ul className="divide-y divide-hair rounded-2xl bg-sunken">
+              {passes.map((p) => (
+                <li key={p.id} className="flex items-center gap-3 px-3 py-2">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold">{p.label}</span>
+                    <span className="block text-[13px] text-mute">ใช้ได้ถึง {timeOf(p.until)}</span>
+                  </span>
+                  <button type="button" className="btn btn-soft min-h-9 px-3 text-sm text-bad" onClick={() => endPass(p)} disabled={ending === p.id}>
+                    หยุดเลย
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {hits.length > 0 && (
+          <div>
+            <span className="label">วันนี้พยายามเปิดแอปที่บล็อค</span>
+            <ul className="divide-y divide-hair rounded-2xl bg-sunken">
+              {hits.map((h) => (
+                <li key={h.pkg} className="flex items-center gap-3 px-3 py-2 text-[15px]">
+                  <span className="min-w-0 flex-1 truncate">{h.label}</span>
+                  <span className="shrink-0 text-mute">
+                    {h.count} ครั้ง · ล่าสุด {timeOf(h.lastAt)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div>
+          <span className="label">เลือกแอปที่ไม่ให้เปิด ({blocked.size})</span>
+          {apps.length === 0 && !search ? (
+            <p className="rounded-2xl bg-sunken px-3 py-2.5 text-sm text-mute">ยังไม่มีรายชื่อแอป — เปิดมือถือลูกให้ต่อเน็ตสักครู่ แล้วเปิดหน้านี้ใหม่</p>
+          ) : (
+            <>
+              {info.apps.length > 10 && <input className="field mb-2" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาแอป" aria-label="ค้นหาแอป" />}
+              <ul className="max-h-72 divide-y divide-hair overflow-y-auto rounded-2xl bg-sunken">
+                {apps.map((a) => (
+                  <li key={a.pkg}>
+                    <label className="flex items-center gap-3 px-3 py-2">
+                      <input type="checkbox" className="size-5 accent-purple-600" checked={blocked.has(a.pkg)} onChange={(e) => toggle(a, e.target.checked)} />
+                      <span className="min-w-0 flex-1 truncate">{a.label}</span>
+                      {allowed.has(a.pkg) && blocked.has(a.pkg) && <span className="shrink-0 text-xs text-mute">อยู่ใน “ใช้ได้เสมอ” ด้วย — บล็อคก่อน</span>}
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+
+        <button className="btn btn-primary w-full text-lg" disabled={busy}>
+          บันทึกการบล็อค
+        </button>
+      </form>
+    </Sheet>
   );
 }
 

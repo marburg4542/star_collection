@@ -8,7 +8,7 @@ import { WEEK_STATUS, canSpeak, imageUrl, mondayOf, passCount, shrinkImage, spea
 import { Avatar, Empty, EmojiPicker, Spinner, StarCount, Stepper } from '../../components/ui.jsx';
 import { Confirm } from '../../components/Feedback.jsx';
 import { AddButton, EditorSheet, Row } from '../../components/Editor.jsx';
-import { Spelling, WordPicture } from '../../components/Vocab.jsx';
+import { WordPicture } from '../../components/Vocab.jsx';
 
 const VOCAB_EMOJIS = ['🍎', '🍌', '🍇', '🍉', '🥕', '🍚', '🥛', '🐱', '🐶', '🐘', '🐟', '🐦', '🚗', '🚌', '✈️', '🏠', '🏫', '📚', '✏️', '⚽', '☀️', '🌧️', '🌳', '👕'];
 
@@ -221,7 +221,7 @@ export function VocabSetPage() {
                       {w.word}
                     </span>
                   }
-                  sub={`${w.meaning}${w.reading ? ` · อ่านว่า ${w.reading}` : ''}`}
+                  sub={w.meaning}
                 />
               ))}
             </ul>
@@ -281,7 +281,7 @@ export function VocabSetPage() {
 
 // ---------- เพิ่ม/แก้คำศัพท์ ----------
 
-const EMPTY_WORD = { word: '', meaning: '', reading: '', example: '', emoji: '', image: null };
+const EMPTY_WORD = { word: '', meaning: '', example: '', emoji: '', image: null };
 
 function WordSheet({ word, setId, onClose }) {
   const isNew = !word?.id;
@@ -294,7 +294,6 @@ function WordSheet({ word, setId, onClose }) {
     setF({
       word: word.word ?? '',
       meaning: word.meaning ?? '',
-      reading: word.reading ?? '',
       example: word.example ?? '',
       emoji: word.emoji ?? '',
       image: word.image ?? null,
@@ -357,23 +356,12 @@ function WordSheet({ word, setId, onClose }) {
             </button>
           )}
         </div>
-        {trimmed && (
-          <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-mute">
-            สะกดว่า <Spelling word={trimmed} size="sm" />
-          </p>
-        )}
       </div>
       <div>
         <label className="label" htmlFor="vocab-meaning">
           คำแปลภาษาไทย
         </label>
         <input id="vocab-meaning" className="field" value={f.meaning} onChange={(e) => set({ meaning: e.target.value })} maxLength={80} placeholder="เช่น แอปเปิ้ล" />
-      </div>
-      <div>
-        <label className="label" htmlFor="vocab-reading">
-          คำอ่านภาษาไทย <span className="font-normal text-mute">(ไม่บังคับ)</span>
-        </label>
-        <input id="vocab-reading" className="field" value={f.reading} onChange={(e) => set({ reading: e.target.value })} maxLength={60} placeholder="เช่น แอป-เปิ้ล" />
       </div>
       <div>
         <label className="label" htmlFor="vocab-example">

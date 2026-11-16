@@ -9,6 +9,7 @@ import { guessLimiter } from './auth.js';
 import { isPhoneOnline, notifyPhones, phoneEventsHandler } from './events.js';
 import { HttpError, bad, text, wholeNumber } from './validate.js';
 import { STARTER_SITES, STARTER_WORDS, getWebBlock, readWebBlock, saveWebBlock } from './webblock.js';
+import { createAppBlock } from './appblock.js';
 
 const TZ = 'Asia/Bangkok';
 const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -344,6 +345,7 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
     db.prepare('DELETE FROM screen_sessions WHERE day < ?').run(dayFmt.format(cutoff));
     db.prepare('DELETE FROM app_changes WHERE at < ?').run(cutoff.toISOString());
     db.prepare('DELETE FROM web_blocks WHERE at < ?').run(cutoff.toISOString());
+    appBlock.prune(cutoff.toISOString());
     db.prepare('DELETE FROM phone_events WHERE back_at < ?').run(cutoff.toISOString());
   }
 
@@ -391,6 +393,8 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
     notifyPhones({ type: 'state' }, kidId === null ? null : phoneIdsOf(kidId));
     changed('phones');
   }
+
+  const appBlock = createAppBlock({ db, push, poke, changed, mustKid });
 
   function addGrant({ kidId, minutes, source, requestId = null, clientId = null, day = today() }) {
     s.insertGrant.run({ kidId, day, minutes, source, requestId, clientId });
@@ -449,6 +453,7 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
       rewards: s.screenRewards.all(),
       requests: s.kidScreenRequests.all(kid.id),
       timeRequests: s.kidTimeRequests.all(kid.id),
+      appBlock: appBlock.phoneState(kid.id),
     };
   }
 
@@ -641,6 +646,8 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
     res.json({ ok: true, applied: true });
   });
 
+  appBlock.mountPhone(F);
+
   F.post('/time-requests', (req, res) => {
     const minutes = Number(req.body.minutes);
     if (!TIME_REQUEST_MINUTES.includes(minutes)) throw bad('ขอเวลาได้ 15, 30 หรือ 60 นาที');
@@ -756,10 +763,12 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
               grantMinutes: s.grantSum.get(id, day).v,
               usedSec: s.usedByKid.get(id, day).v,
               apps: [...(appsByKid.get(id)?.values() ?? [])].sort((a, b) => a.label.localeCompare(b.label, 'th')),
+              ...appBlock.kidInfo(id, day),
             },
           ]),
         ),
         timeRequests: s.timeRequests.all(),
+        appRequests: appBlock.pendingRequests(),
       });
     });
 
@@ -918,6 +927,8 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
       decide(req, 'rejected');
       res.json({ ok: true });
     });
+
+    appBlock.mountParent(P);
   }
 
   return {
@@ -935,6 +946,7 @@ export function createScreen({ db, push, changed, mustKid, mustReward, kidStars,
     /** PIN ผู้ปกครองเปลี่ยน / ลบเด็ก → เครื่องต้องโหลดใหม่ */
     pokeAll: () => poke(null),
     pokeKid: (kidId) => notifyPhones({ type: 'state' }, phoneIdsOf(kidId)),
+    pendingAppRequests: () => appBlock.pendingRequests(),
     pendingTimeRequests: () =>
       db.prepare("SELECT id, kid_id AS kidId, minutes, created_at AS createdAt FROM time_requests WHERE status = 'pending' ORDER BY id").all(),
   };

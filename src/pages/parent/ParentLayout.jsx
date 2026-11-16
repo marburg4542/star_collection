@@ -28,7 +28,7 @@ export default function ParentLayout() {
 
   if (!isParent) return locking.current ? null : <Navigate to="/" replace state={{ askPin: true, next: location.pathname + location.search }} />;
   const pending = data.requests.filter((r) => r.status === 'pending').length;
-  const badges = { '/parent/requests': pending, '/parent/phones': data.timeRequests?.length ?? 0 };
+  const badges = { '/parent/requests': pending, '/parent/phones': (data.timeRequests?.length ?? 0) + (data.appRequests?.length ?? 0) };
 
   // ไปหน้าแรกก่อนแล้วค่อยออกจากโหมด — ถ้าออกก่อน หน้านี้จะเห็นว่า "ไม่ใช่ผู้ปกครอง" แล้วเด้งแป้น PIN ขึ้นมา
   const toKid = () => {
