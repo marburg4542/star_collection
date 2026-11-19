@@ -5,13 +5,17 @@ import { getSetting, setSetting } from './db.js';
 import {
   checkSecret,
   deviceAuthorized,
+  dropKidTokens,
   dropParentToken,
   familyVersion,
   forgetDevice,
   guessLimiter,
   hashSecret,
   issueDevice,
+  issueKidToken,
   issueParentToken,
+  isParentRequest,
+  kidOfRequest,
   normalizeFamilyCode,
   requireDevice,
   requireParent,
@@ -53,7 +57,7 @@ export function createApp(db, { appUrl, distDir, mediaDir } = {}) {
   // ---------- คำสั่ง SQL ที่ใช้บ่อย ----------
   const q = {
     kids: db.prepare(`
-      SELECT k.id, k.name, k.avatar, k.color,
+      SELECT k.id, k.name, k.avatar, k.color, (k.pin_hash IS NOT NULL) AS hasPin,
         COALESCE((SELECT SUM(amount) FROM transactions t WHERE t.kid_id = k.id AND t.voided_at IS NULL), 0) AS balance,
         COALESCE((SELECT SUM(amount) FROM transactions t WHERE t.kid_id = k.id AND t.voided_at IS NULL AND t.type <> 'redeem'), 0) AS total,
         COALESCE((SELECT SUM(cost) FROM requests r WHERE r.kid_id = k.id AND r.status = 'pending'), 0) AS reserved,
@@ -81,6 +85,11 @@ export function createApp(db, { appUrl, distDir, mediaDir } = {}) {
   };
 
   const mustKid = (id) => q.kid.get(Number(id)) ?? (() => { throw new HttpError(404, 'ไม่พบเด็กคนนี้'); })();
+  // เด็กที่ตั้งรหัสไว้: ทำอะไรแทนเด็กคนนั้น (ดูประวัติ แลกรางวัล ส่งผลเกม ฯลฯ) ต้องใส่รหัสก่อน — ผู้ปกครองข้ามได้
+  const kidAccess = (req, kid) => {
+    if (!kid.pin_hash || isParentRequest(req) || kidOfRequest(req) === kid.id) return kid;
+    throw new HttpError(403, `ต้องใส่รหัสของ${kid.name}ก่อน`, 'kid-pin');
+  };
   const mustReward = (id) => q.reward.get(Number(id)) ?? (() => { throw new HttpError(404, 'ไม่พบของรางวัลนี้'); })();
   const changed = (what) => broadcast({ type: 'change', what });
 
@@ -145,8 +154,8 @@ export function createApp(db, { appUrl, distDir, mediaDir } = {}) {
     screen.pokeKid(kidId);
     return Number(lastInsertRowid);
   }
-  const vocab = createVocab({ db, push, changed, mustKid, device, awardStars, mediaDir });
-  const games = createGames({ db, push, changed, mustKid, device, awardStars, voidTransaction });
+  const vocab = createVocab({ db, push, changed, mustKid, kidAccess, device, awardStars, mediaDir });
+  const games = createGames({ db, push, changed, mustKid, kidAccess, device, awardStars, voidTransaction });
 
   function state() {
     return {
@@ -198,8 +207,22 @@ export function createApp(db, { appUrl, distDir, mediaDir } = {}) {
 
   app.get('/api/state', device, (req, res) => res.json(state()));
 
+  // ใส่รหัสเข้าหน้าเด็ก — ถูกแล้วได้ token ของเด็กคนนั้น (ผิดหลายครั้งโดนพัก 15 นาทีเหมือน PIN ผู้ปกครอง)
+  app.post('/api/kids/:id/unlock', device, guessLimiter(), (req, res) => {
+    const kid = mustKid(req.params.id);
+    if (!kid.pin_hash) return res.json({ token: null });
+    if (!checkSecret(String(req.body.pin ?? ''), kid.pin_hash)) {
+      return res.status(401).json({ error: 'pin', message: 'รหัสไม่ถูกต้อง' });
+    }
+    res.json({ token: issueKidToken(kid.id) });
+  });
+
   app.get('/api/history', device, (req, res) => {
     const kidId = req.query.kid ? Number(req.query.kid) : null;
+    if (kidId) kidAccess(req, mustKid(kidId));
+    else if (!isParentRequest(req) && db.prepare('SELECT 1 FROM kids WHERE pin_hash IS NOT NULL LIMIT 1').get()) {
+      throw new HttpError(403, 'ดูประวัติของทุกคนได้เฉพาะผู้ปกครอง', 'parent-only');
+    }
     const before = req.query.before ? Number(req.query.before) : null;
     const limit = Math.min(Number(req.query.limit) || 40, 100);
     const rows = db
@@ -213,7 +236,7 @@ export function createApp(db, { appUrl, distDir, mediaDir } = {}) {
   });
 
   app.post('/api/requests', device, (req, res) => {
-    const kid = mustKid(req.body.kidId);
+    const kid = kidAccess(req, mustKid(req.body.kidId));
     const reward = req.body.baht !== undefined ? moneyReward(req.body.baht) : mustReward(req.body.rewardId);
     const id = createRequest(kid, reward);
     screen.pokeKid(kid.id); // ดาวที่ใช้ได้บนหน้าล็อคมือถือลดลง
@@ -223,6 +246,7 @@ export function createApp(db, { appUrl, distDir, mediaDir } = {}) {
   app.post('/api/requests/:id/cancel', device, (req, res) => {
     const r = q.request.get(Number(req.params.id));
     if (!r) throw new HttpError(404, 'ไม่พบคำขอนี้');
+    kidAccess(req, mustKid(r.kid_id));
     if (r.status !== 'pending') throw new HttpError(409, 'คำขอนี้ไม่ได้รออนุมัติแล้ว');
     db.prepare("UPDATE requests SET status = 'cancelled', decided_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(r.id);
     changed('requests');
@@ -254,7 +278,7 @@ export function createApp(db, { appUrl, distDir, mediaDir } = {}) {
   }
   function readTarget(req) {
     const role = oneOf(req.body.role, ['parent', 'kid'], 'ประเภทการแจ้งเตือน');
-    return { role, kidId: role === 'kid' ? mustKid(req.body.kidId).id : 0 };
+    return { role, kidId: role === 'kid' ? kidAccess(req, mustKid(req.body.kidId)).id : 0 };
   }
 
   app.post('/api/push/subscribe', device, (req, res, next) => {
@@ -481,6 +505,21 @@ export function createApp(db, { appUrl, distDir, mediaDir } = {}) {
     changed('kids');
     res.json({ ok: true });
   });
+  // รหัสเข้าหน้าเด็ก: ตั้ง/เปลี่ยน หรือลบ — เครื่องที่เคยใส่รหัสเดิมต้องใส่ใหม่
+  P.put('/kids/:id/pin', (req, res) => {
+    const kid = mustKid(req.params.id);
+    db.prepare('UPDATE kids SET pin_hash = ? WHERE id = ?').run(hashSecret(pin(req.body.pin)), kid.id);
+    dropKidTokens(kid.id);
+    changed('kids');
+    res.json({ ok: true });
+  });
+  P.delete('/kids/:id/pin', (req, res) => {
+    const kid = mustKid(req.params.id);
+    db.prepare('UPDATE kids SET pin_hash = NULL WHERE id = ?').run(kid.id);
+    dropKidTokens(kid.id);
+    changed('kids');
+    res.json({ ok: true });
+  });
   P.delete('/kids/:id', (req, res) => {
     const kid = mustKid(req.params.id);
     screen.pokeKid(kid.id); // มือถือของเด็กคนนี้จะเห็นว่าหลุดการจับคู่
@@ -625,7 +664,7 @@ export function createApp(db, { appUrl, distDir, mediaDir } = {}) {
 
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
-    if (err instanceof HttpError) return res.status(err.status).json({ error: 'bad', message: err.message });
+    if (err instanceof HttpError) return res.status(err.status).json({ error: err.code, message: err.message });
     if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'bad', message: 'ข้อมูลไม่ถูกต้อง' });
     if (err.type === 'entity.too.large') return res.status(413).json({ error: 'bad', message: 'ไฟล์ใหญ่เกินไป' });
     console.error(err);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { api } from '../lib/api.js';
+import { api, lockKids } from '../lib/api.js';
 import { useStore } from '../lib/store.jsx';
 import { useLocalState, local } from '../lib/local.js';
 import { isIos, isStandalone } from '../lib/push.js';
@@ -18,6 +18,8 @@ export default function Home() {
   const [board, setBoard] = useLocalState('podium', 'balance');
   const next = location.state?.next;
   const kids = data.kids;
+  // กลับมาหน้าแรก = ล็อคหน้าของเด็กที่ใส่รหัสไว้ (คนต่อไปที่หยิบเครื่องต้องใส่รหัสเอง)
+  useEffect(() => lockKids(), []);
   const pending = data.requests.filter((r) => r.status === 'pending').length + (data.timeRequests?.length ?? 0);
 
   const openParent = () => (isParent ? navigate('/parent') : setPinOpen(true));
@@ -77,7 +79,12 @@ export default function Home() {
             <h2 className="mb-3 px-1 text-lg font-bold">👋 แตะชื่อตัวเองเลย</h2>
             <div className="grid grid-cols-2 gap-3">
               {kids.map((k) => (
-                <Link key={k.id} to={`/kid/${k.id}`} className="card flex flex-col items-center gap-2 px-3 py-4 transition-transform active:scale-95">
+                <Link key={k.id} to={`/kid/${k.id}`} className="card relative flex flex-col items-center gap-2 px-3 py-4 transition-transform active:scale-95">
+                  {!!k.hasPin && (
+                    <span className="absolute right-3 top-2.5 text-base" title="มีรหัส" aria-label="มีรหัส">
+                      🔒
+                    </span>
+                  )}
                   <Avatar kid={k} size={76} />
                   <span className="max-w-full truncate text-lg font-bold">{k.name}</span>
                   <StarCount value={k.balance} size={24} className="text-2xl" />

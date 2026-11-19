@@ -105,9 +105,45 @@ export function requireParent() {
   };
 }
 
+/** ผู้ปกครองที่ใส่ PIN แล้ว (ไม่ต่ออายุให้ — ใช้เช็กเฉยๆ ว่าข้ามรหัสเด็กได้) */
+export function isParentRequest(req) {
+  const token = req.get('x-parent-token');
+  const expires = token && parentSessions.get(token);
+  return !!expires && expires >= Date.now();
+}
+
+// เด็กที่ผู้ปกครองตั้งรหัสไว้: ใส่รหัสถูก → token ของเด็กคนนั้น ส่งมาใน header X-Kid-Token
+// เก็บในหน่วยความจำ ไม่ได้ใช้ 2 ชม. หมดอายุ (เครื่องฝั่งเด็กลืม token เองเมื่อกลับหน้าแรก/ปิดแอป)
+export const KID_IDLE_MS = 2 * 60 * 60 * 1000;
+const kidSessions = new Map(); // token → { kidId, expires }
+
+export function issueKidToken(kidId) {
+  const token = newToken();
+  kidSessions.set(token, { kidId, expires: Date.now() + KID_IDLE_MS });
+  return token;
+}
+
+/** token ในคำขอนี้เป็นของเด็กคนไหน (ต่ออายุให้ด้วย) — ไม่มี/หมดอายุ = null */
+export function kidOfRequest(req) {
+  const token = req.get('x-kid-token');
+  const session = token && kidSessions.get(token);
+  if (!session || session.expires < Date.now()) {
+    if (token) kidSessions.delete(token);
+    return null;
+  }
+  session.expires = Date.now() + KID_IDLE_MS;
+  return session.kidId;
+}
+
+/** เปลี่ยน/ลบรหัสแล้ว เครื่องที่เคยใส่รหัสเดิมต้องใส่ใหม่ */
+export function dropKidTokens(kidId) {
+  for (const [token, session] of kidSessions) if (session.kidId === kidId) kidSessions.delete(token);
+}
+
 setInterval(() => {
   const now = Date.now();
   for (const [token, expires] of parentSessions) if (expires < now) parentSessions.delete(token);
+  for (const [token, session] of kidSessions) if (session.expires < now) kidSessions.delete(token);
 }, 60_000).unref();
 
 // ผ่าน Cloudflare tunnel ทุกคำขอมาจาก localhost — ใช้ IP จริงที่ Cloudflare แนบมาแทน

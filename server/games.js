@@ -40,7 +40,7 @@ function gameOf(key) {
   return game;
 }
 
-export function createGames({ db, push, changed, mustKid, device, awardStars, voidTransaction }) {
+export function createGames({ db, push, changed, mustKid, kidAccess, device, awardStars, voidTransaction }) {
   const s = {
     settings: db.prepare('SELECT * FROM game_settings WHERE kid_id = ?'),
     saveSettings: db.prepare(`
@@ -112,7 +112,7 @@ export function createGames({ db, push, changed, mustKid, device, awardStars, vo
     const key = req.params.game;
     const game = gameOf(key);
     const b = req.body ?? {};
-    const kid = mustKid(b.kidId);
+    const kid = kidAccess(req, mustKid(b.kidId));
     const settings = settingsOf(kid.id)[key];
     if (!settings.enabled) throw bad('ผู้ปกครองปิดเกมนี้ไว้');
     const correct = inRange(b.correct, 'จำนวนข้อที่ถูก', 0, game.maxCorrect);

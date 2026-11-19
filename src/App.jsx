@@ -20,6 +20,7 @@ import MathPop from './pages/MathPop.jsx';
 import ScaleGame from './pages/ScaleGame.jsx';
 import ShopGame from './pages/ShopGame.jsx';
 import { VocabGame } from './pages/Games.jsx';
+import { KidGate } from './components/KidGate.jsx';
 
 export default function App() {
   return (
@@ -81,12 +82,15 @@ function Screens() {
       )}
       <Routes>
         <Route path="/" element={<Home />} />
-        <Route path="/kid/:id" element={<KidPage />} />
-        <Route path="/kid/:id/vocab/:setId" element={<VocabPlay />} />
-        <Route path="/kid/:id/games/vocab" element={<VocabGame />} />
-        <Route path="/kid/:id/games/math" element={<MathPop />} />
-        <Route path="/kid/:id/games/scale" element={<ScaleGame />} />
-        <Route path="/kid/:id/games/shop" element={<ShopGame />} />
+        {/* หน้าของเด็ก — เด็กที่ตั้งรหัสไว้ต้องใส่รหัสก่อน */}
+        <Route path="/kid/:id" element={<KidGate />}>
+          <Route index element={<KidPage />} />
+          <Route path="vocab/:setId" element={<VocabPlay />} />
+          <Route path="games/vocab" element={<VocabGame />} />
+          <Route path="games/math" element={<MathPop />} />
+          <Route path="games/scale" element={<ScaleGame />} />
+          <Route path="games/shop" element={<ShopGame />} />
+        </Route>
         <Route path="/parent" element={<ParentLayout />}>
           <Route index element={<Give />} />
           <Route path="requests" element={<Requests />} />

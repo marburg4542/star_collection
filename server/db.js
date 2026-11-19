@@ -404,6 +404,11 @@ const MIGRATIONS = [
       DROP TABLE math_settings;
     `);
   },
+
+  // รหัสเข้าหน้าเด็ก (เลข 4 หลัก เก็บแบบ bcrypt) — null = ไม่ได้ตั้ง ใครก็เข้าได้
+  (db) => {
+    db.exec('ALTER TABLE kids ADD COLUMN pin_hash TEXT');
+  },
 ];
 
 export function minutesFromName(name) {

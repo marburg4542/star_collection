@@ -35,6 +35,35 @@ export function setParentToken(token) {
   }
 }
 
+// เด็กที่ตั้งรหัส: ใส่รหัสถูกแล้วได้ token เก็บใน sessionStorage ทีละคน — กลับหน้าแรก/ปิดแอปแล้วลืม ต้องใส่ใหม่
+const KID_KEY = 'sc_kid';
+function readKid() {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(KID_KEY) || 'null');
+    return v?.token ? v : null;
+  } catch {
+    return null;
+  }
+}
+let kidSession = readKid();
+const kidListeners = new Set();
+
+export const kidUnlocked = (kidId) => kidSession?.kidId === Number(kidId);
+export function onKidLocked(fn) {
+  kidListeners.add(fn);
+  return () => kidListeners.delete(fn);
+}
+export function setKidSession(kidId, token) {
+  kidSession = token ? { kidId: Number(kidId), token } : null;
+  try {
+    if (kidSession) sessionStorage.setItem(KID_KEY, JSON.stringify(kidSession));
+    else sessionStorage.removeItem(KID_KEY);
+  } catch {
+    /* โหมดส่วนตัว — จำในหน่วยความจำอย่างเดียวก็พอ */
+  }
+}
+export const lockKids = () => setKidSession(null, null);
+
 async function request(method, url, body) {
   const file = typeof Blob !== 'undefined' && body instanceof Blob; // อัปโหลดรูป: ส่งไฟล์ตรงๆ
   let res;
@@ -45,6 +74,7 @@ async function request(method, url, body) {
       headers: {
         ...(body !== undefined && { 'Content-Type': file ? body.type : 'application/json' }),
         ...(parentToken && { 'X-Parent-Token': parentToken }),
+        ...(kidSession && { 'X-Kid-Token': kidSession.token }),
       },
       body: body === undefined ? undefined : file ? body : JSON.stringify(body),
     });
@@ -62,6 +92,11 @@ async function request(method, url, body) {
     if (res.status === 401 && (err.code === 'device' || err.code === 'parent')) {
       if (err.code === 'parent') setParentToken('');
       listeners.forEach((fn) => fn(err.code));
+    }
+    // token เด็กหมดอายุ หรือผู้ปกครองเปลี่ยนรหัส → กลับไปหน้าใส่รหัส
+    if (res.status === 403 && err.code === 'kid-pin') {
+      lockKids();
+      kidListeners.forEach((fn) => fn());
     }
     throw err;
   }

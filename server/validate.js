@@ -2,9 +2,10 @@
 import { isValidPin, normalizeFamilyCode } from './auth.js';
 
 export class HttpError extends Error {
-  constructor(status, message) {
+  constructor(status, message, code = 'bad') {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 export const bad = (message) => new HttpError(400, message);

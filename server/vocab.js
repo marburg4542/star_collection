@@ -31,7 +31,7 @@ function dateOnly(value) {
   return s;
 }
 
-export function createVocab({ db, push, changed, mustKid, device, awardStars, mediaDir }) {
+export function createVocab({ db, push, changed, mustKid, kidAccess, device, awardStars, mediaDir }) {
   const s = {
     sets: db.prepare('SELECT id, title, week_start AS weekStart, pass_pct AS passPct, stars FROM vocab_sets ORDER BY week_start DESC, id DESC'),
     set: db.prepare('SELECT * FROM vocab_sets WHERE id = ?'),
@@ -121,7 +121,7 @@ export function createVocab({ db, push, changed, mustKid, device, awardStars, me
   // ส่งคำตอบทั้งชุด — เซิร์ฟเวอร์ตรวจเอง: เลือกคำแปล (choice) หรือพิมพ์สะกด (spell) ต้องตอบครบทุกคำ คำละครั้ง
   router.post('/:id/attempts', (req, res) => {
     const set = mustSet(req.params.id);
-    const kid = mustKid(req.body.kidId);
+    const kid = kidAccess(req, mustKid(req.body.kidId));
     if (!db.prepare('SELECT 1 FROM vocab_set_kids WHERE set_id = ? AND kid_id = ?').get(set.id, kid.id)) {
       throw new HttpError(403, `ชุดนี้ไม่ได้ให้${kid.name}ท่อง`);
     }

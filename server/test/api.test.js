@@ -27,10 +27,11 @@ after(() => {
   fs.rmSync(mediaDir, { recursive: true, force: true });
 });
 
-// เครื่องจำลอง: จำคุกกี้ไว้ + ส่ง token ผู้ปกครองถ้ามี
+// เครื่องจำลอง: จำคุกกี้ไว้ + ส่ง token ผู้ปกครอง / token เด็ก (หลังใส่รหัสเด็ก) ถ้ามี
 function client() {
   let cookie = '';
   let parentToken = '';
+  let kidToken = '';
   async function call(method, url, body, rawType) {
     const res = await fetch(base + url, {
       method,
@@ -38,6 +39,7 @@ function client() {
         'content-type': rawType ?? 'application/json',
         ...(cookie && { cookie }),
         ...(parentToken && { 'x-parent-token': parentToken }),
+        ...(kidToken && { 'x-kid-token': kidToken }),
       },
       body: body === undefined ? undefined : rawType ? body : JSON.stringify(body),
     });
@@ -54,6 +56,7 @@ function client() {
     del: (u) => call('DELETE', u),
     upload: (u, buf, type) => call('POST', u, buf, type),
     setParent: (t) => (parentToken = t),
+    setKid: (t) => (kidToken = t),
   };
 }
 
@@ -367,6 +370,52 @@ test('มินิเกม: ตั้งค่าต่อเด็กต่อ
   } finally {
     app.locals.push.notify = realNotify;
   }
+});
+
+test('รหัสเข้าหน้าเด็ก: ใส่รหัสก่อนทำอะไรแทนเด็กคนนั้น · ผู้ปกครองข้ามได้ · เปลี่ยนรหัสแล้ว token เดิมใช้ไม่ได้', async () => {
+  const kidOf = async (id) => (await kidPhone.get('/api/state')).body.kids.find((k) => k.id === id);
+  const pinUrl = (id) => `/api/parent/kids/${id}/pin`;
+  const round = (kidId) => kidPhone.post('/api/games/math/rounds', { kidId, levels: [2], score: 0, correct: 0, wrong: 3, bestCombo: 0 });
+  const locked = (r, msg) => assert.deepEqual([r.status, r.body.error], [403, 'kid-pin'], msg);
+
+  assert.equal(!!(await kidOf(kidA)).hasPin, false);
+  assert.equal((await kidPhone.put(pinUrl(kidA), { pin: '1357' })).status, 401, 'เด็กตั้งรหัสเองไม่ได้');
+  assert.equal((await mom.put(pinUrl(kidA), { pin: '12' })).status, 400);
+  assert.equal((await mom.put(pinUrl(kidA), { pin: '1357' })).status, 200);
+  const a = await kidOf(kidA);
+  assert.equal(!!a.hasPin, true);
+  assert.ok(!('pin_hash' in a), 'ไม่ส่งรหัส (แบบเข้ารหัส) ออกไปให้เครื่องไหน');
+
+  // ยังไม่ใส่รหัส → ทำแทนน้องเอไม่ได้ · น้องบี (ไม่มีรหัส) ใช้ได้ตามปกติ
+  locked(await kidPhone.get(`/api/history?kid=${kidA}`), 'ดูประวัติ');
+  locked(await kidPhone.post('/api/requests', { kidId: kidA, baht: 1 }), 'แลกรางวัล');
+  locked(await round(kidA), 'ส่งผลเกม');
+  locked(await kidPhone.post('/api/push/unsubscribe', { role: 'kid', kidId: kidA, endpoint: 'https://fcm.googleapis.com/x' }), 'ตั้งแจ้งเตือน');
+  assert.equal((await kidPhone.get(`/api/history?kid=${kidB}`)).status, 200);
+  assert.equal((await kidPhone.get('/api/history')).status, 403, 'ประวัติทุกคนรวมกันดูได้เฉพาะผู้ปกครอง');
+  assert.equal((await mom.get(`/api/history?kid=${kidA}`)).status, 200, 'ผู้ปกครองข้ามรหัสได้');
+  assert.equal((await mom.get('/api/history')).status, 200);
+
+  // ใส่รหัส → ได้ token ของน้องเอ
+  assert.deepEqual((await kidPhone.post(`/api/kids/${kidA}/unlock`, { pin: '0000' })).body.error, 'pin');
+  const { token } = (await kidPhone.post(`/api/kids/${kidA}/unlock`, { pin: '1357' })).body;
+  assert.ok(token);
+  assert.equal((await kidPhone.post(`/api/kids/${kidB}/unlock`, { pin: '' })).body.token, null, 'เด็กที่ไม่มีรหัส ไม่ต้องใส่');
+  kidPhone.setKid(token);
+  assert.equal((await kidPhone.get(`/api/history?kid=${kidA}`)).status, 200);
+  assert.equal((await round(kidA)).status, 200);
+  assert.equal((await mom.put(pinUrl(kidB), { pin: '2468' })).status, 200);
+  locked(await kidPhone.get(`/api/history?kid=${kidB}`), 'token ของน้องเอใช้แทนน้องบีไม่ได้');
+
+  // เปลี่ยนรหัส → token เดิมใช้ไม่ได้ · ลบรหัส → เข้าได้เหมือนเดิม
+  assert.equal((await mom.put(pinUrl(kidA), { pin: '9753' })).status, 200);
+  locked(await kidPhone.get(`/api/history?kid=${kidA}`), 'เปลี่ยนรหัสแล้วต้องใส่ใหม่');
+  assert.equal((await mom.del(pinUrl(kidA))).status, 200);
+  assert.equal((await mom.del(pinUrl(kidB))).status, 200);
+  kidPhone.setKid('');
+  assert.equal((await kidPhone.get(`/api/history?kid=${kidA}`)).status, 200);
+  assert.equal((await kidPhone.get('/api/history')).status, 200);
+  assert.equal(!!(await kidOf(kidA)).hasPin, false);
 });
 
 test('เปลี่ยนรหัสครอบครัวแล้วเครื่องอื่นหลุด', async () => {

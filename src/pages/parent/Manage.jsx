@@ -68,9 +68,14 @@ function KidEditor({ kid, onClose }) {
   const [name, setName] = useState('');
   const [avatar, setAvatar] = useState(AVATARS[0]);
   const [color, setColor] = useState('sky');
+  const [pinInput, setPinInput] = useState('');
+  const [removePin, setRemovePin] = useState(false);
+  const hasPin = !!kid?.hasPin;
 
   useEffect(() => {
     if (!kid) return;
+    setPinInput('');
+    setRemovePin(false);
     const used = new Set(data.kids.map((k) => k.avatar));
     setName(kid.name ?? '');
     setAvatar(kid.avatar ?? AVATARS.find((a) => !used.has(a)) ?? AVATARS[0]);
@@ -87,10 +92,13 @@ function KidEditor({ kid, onClose }) {
         navigate('/parent/manage?tab=kids', { replace: true });
       }}
       onSave={async () => {
+        if (pinInput && pinInput.length !== 4) throw new Error('รหัสต้องเป็นตัวเลข 4 หลัก');
         const body = { name, avatar, color };
-        if (isNew) await api.post('/api/parent/kids', body);
-        else await api.put(`/api/parent/kids/${kid.id}`, body);
-        toast.success(isNew ? `เพิ่ม${name.trim()}แล้ว` : 'บันทึกแล้ว');
+        const id = isNew ? (await api.post('/api/parent/kids', body)).id : kid.id;
+        if (!isNew) await api.put(`/api/parent/kids/${id}`, body);
+        if (pinInput) await api.put(`/api/parent/kids/${id}/pin`, { pin: pinInput });
+        else if (removePin) await api.del(`/api/parent/kids/${id}/pin`);
+        toast.success(`${isNew ? `เพิ่ม${name.trim()}แล้ว` : 'บันทึกแล้ว'}${pinInput ? ' · ตั้งรหัสแล้ว' : removePin ? ' · ลบรหัสแล้ว' : ''}`);
       }}
       onDelete={isNew ? null : () => api.del(`/api/parent/kids/${kid.id}`)}
       deleteText={`ลบ ${kid?.name} ออกจากแอป — ดาวและประวัติทั้งหมดของ${kid?.name}จะหายไปด้วย กู้คืนไม่ได้`}
@@ -123,6 +131,41 @@ function KidEditor({ kid, onClose }) {
       <div>
         <span className="label">รูปประจำตัว</span>
         <EmojiPicker value={avatar} onChange={setAvatar} choices={AVATARS} />
+      </div>
+      <div>
+        <label className="label" htmlFor="kid-pin">
+          🔒 รหัสเข้าหน้าเด็ก (ตัวเลข 4 หลัก)
+        </label>
+        <input
+          id="kid-pin"
+          className="field tabular tracking-[0.3em]"
+          inputMode="numeric"
+          autoComplete="off"
+          maxLength={4}
+          value={pinInput}
+          onChange={(e) => setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+          placeholder={hasPin ? 'ใส่เลขใหม่ถ้าจะเปลี่ยนรหัส' : 'ไม่ตั้ง = ใครก็เข้าได้'}
+          disabled={removePin}
+        />
+        <p className="mt-1.5 text-sm text-mute">
+          {removePin
+            ? 'จะลบรหัสตอนกดบันทึก — ใครก็เข้าหน้านี้ได้'
+            : hasPin
+              ? 'ตั้งรหัสไว้แล้ว (ดูรหัสเดิมไม่ได้ ถ้าเด็กลืมให้ตั้งใหม่)'
+              : 'ตั้งแล้วต้องใส่รหัสนี้ก่อนเข้าหน้าของเด็กคนนี้ · โหมดผู้ปกครองเข้าได้เสมอ'}
+        </p>
+        {hasPin && (
+          <button
+            type="button"
+            className="mt-1 text-sm font-semibold text-bad underline-offset-2 hover:underline"
+            onClick={() => {
+              setRemovePin((r) => !r);
+              setPinInput('');
+            }}
+          >
+            {removePin ? 'ไม่ลบแล้ว' : 'ลบรหัส'}
+          </button>
+        )}
       </div>
     </EditorSheet>
   );
