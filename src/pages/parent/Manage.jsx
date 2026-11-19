@@ -10,19 +10,20 @@ import { Avatar, EmojiPicker, Segmented, Sheet, StarCount, Stepper } from '../..
 import { Confirm } from '../../components/Feedback.jsx';
 import { MODES, THEMES, useTheme } from '../../lib/theme.js';
 import { AddButton, EditorSheet, Row } from '../../components/Editor.jsx';
-import { VocabTab } from './Vocab.jsx';
+import { GamesTab } from './Games.jsx';
 
 const TABS = [
   { value: 'kids', label: 'เด็กๆ' },
   { value: 'activities', label: 'ดี/ผิด' },
   { value: 'rewards', label: 'รางวัล' },
-  { value: 'vocab', label: 'ศัพท์' },
+  { value: 'games', label: 'เกม' },
   { value: 'system', label: 'ระบบ' },
 ];
 
 export default function Manage() {
   const [params, setParams] = useSearchParams();
-  const tab = TABS.some((t) => t.value === params.get('tab')) ? params.get('tab') : 'kids';
+  const asked = params.get('tab') === 'vocab' ? 'games' : params.get('tab'); // ลิงก์แจ้งเตือนเก่า
+  const tab = TABS.some((t) => t.value === asked) ? asked : 'kids';
   const autoAdd = params.get('add') === '1';
 
   return (
@@ -32,7 +33,7 @@ export default function Manage() {
         {tab === 'kids' && <KidsTab autoAdd={autoAdd} />}
         {tab === 'activities' && <ActivitiesTab />}
         {tab === 'rewards' && <RewardsTab />}
-        {tab === 'vocab' && <VocabTab />}
+        {tab === 'games' && <GamesTab />}
         {tab === 'system' && <SystemTab />}
       </div>
     </div>

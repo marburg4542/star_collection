@@ -13,7 +13,7 @@ import { WordPicture } from '../../components/Vocab.jsx';
 const VOCAB_EMOJIS = ['🍎', '🍌', '🍇', '🍉', '🥕', '🍚', '🥛', '🐱', '🐶', '🐘', '🐟', '🐦', '🚗', '🚌', '✈️', '🏠', '🏫', '📚', '✏️', '⚽', '☀️', '🌧️', '🌳', '👕'];
 
 function resultText(r) {
-  if (!r) return { text: 'ยังไม่สอบ', cls: 'text-mute' };
+  if (!r) return { text: 'ยังไม่ได้ทำ', cls: 'text-mute' };
   if (r.passed) return { text: '✅ ผ่าน', cls: 'text-good' };
   return { text: `${Math.round(r.best * 100)}%`, cls: 'text-ink' };
 }
@@ -27,7 +27,7 @@ export function VocabTab() {
   if (!loaded) return <Spinner />;
   return (
     <section>
-      <p className="mb-3 px-1 text-sm text-mute">สร้างชุดคำศัพท์ทีละสัปดาห์ เด็กท่องด้วยบัตรคำแล้วสอบ ถูกถึงเกณฑ์ได้ดาว (ครั้งแรกที่ผ่าน)</p>
+      <p className="mb-3 px-1 text-sm text-mute">สร้างชุดคำศัพท์ทีละสัปดาห์ เด็กท่องด้วยบัตรคำแล้วทำภารกิจ ถูกถึงเกณฑ์ได้ดาว (ครั้งแรกที่สำเร็จ)</p>
       {sets.length === 0 ? (
         <Empty emoji="📚" title="ยังไม่มีชุดคำศัพท์">
           กดปุ่มด้านล่างเพื่อสร้างชุดแรก
@@ -90,7 +90,7 @@ export function VocabSetPage() {
   const [editing, setEditing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // ตั้งค่าเริ่มต้นครั้งเดียว — ข้อมูลอัปเดตทีหลัง (เช่น เด็กสอบเสร็จ) ไม่ทับสิ่งที่กำลังพิมพ์
+  // ตั้งค่าเริ่มต้นครั้งเดียว — ข้อมูลอัปเดตทีหลัง (เช่น เด็กทำภารกิจเสร็จ) ไม่ทับสิ่งที่กำลังพิมพ์
   useEffect(() => {
     if (form) return;
     if (isNew) setForm({ title: '', weekStart: mondayOf(), passPct: 80, stars: 5, kidIds: data.kids.map((k) => k.id) });
@@ -98,8 +98,8 @@ export function VocabSetPage() {
   }, [form, isNew, set, data.kids]);
 
   const back = (
-    <Link to="/parent/manage?tab=vocab" className="btn btn-soft min-h-10 px-4 text-[15px]">
-      ← คำศัพท์ทั้งหมด
+    <Link to="/parent/manage?tab=games" className="btn btn-soft min-h-10 px-4 text-[15px]">
+      ← มินิเกม
     </Link>
   );
   if (!isNew && loaded && !set) {
@@ -228,7 +228,7 @@ export function VocabSetPage() {
           )}
           <AddButton onClick={() => setEditing({})}>เพิ่มคำศัพท์</AddButton>
 
-          <h3 className="mt-6 mb-2 px-1 font-bold">ผลสอบ</h3>
+          <h3 className="mt-6 mb-2 px-1 font-bold">ผลภารกิจ</h3>
           <ul className="card divide-y divide-hair rounded-2xl">
             {data.kids
               .filter((k) => set.kidIds.includes(k.id))
@@ -240,7 +240,7 @@ export function VocabSetPage() {
                     <span className="min-w-0 flex-1">
                       <span className="block font-semibold">{k.name}</span>
                       <span className="block text-[13px] text-mute">
-                        {r ? `สอบ ${r.attempts} ครั้ง · ดีที่สุด ${Math.round(r.best * 100)}%` : 'ยังไม่สอบ'}
+                        {r ? `ทำ ${r.attempts} ครั้ง · ดีที่สุด ${Math.round(r.best * 100)}%` : 'ยังไม่ได้ทำ'}
                       </span>
                     </span>
                     {r?.rewarded ? (
@@ -267,10 +267,10 @@ export function VocabSetPage() {
             onConfirm={async () => {
               await api.del(`/api/parent/vocab/${set.id}`);
               toast.success(`ลบ "${set.title}" แล้ว`);
-              navigate('/parent/manage?tab=vocab', { replace: true });
+              navigate('/parent/manage?tab=games', { replace: true });
             }}
           >
-            คำศัพท์ {set.words.length} คำ รูป และผลสอบของชุดนี้จะหายทั้งหมด · ดาวที่เด็กได้ไปแล้วยังอยู่ (ยกเลิกเองได้ในหน้าประวัติ)
+            คำศัพท์ {set.words.length} คำ รูป และผลภารกิจของชุดนี้จะหายทั้งหมด · ดาวที่เด็กได้ไปแล้วยังอยู่ (ยกเลิกเองได้ในหน้าประวัติ)
           </Confirm>
           <WordSheet word={editing} setId={set.id} onClose={() => setEditing(null)} />
         </>

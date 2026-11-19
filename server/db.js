@@ -258,7 +258,7 @@ const MIGRATIONS = [
     `);
   },
 
-  // เกมท่องคำศัพท์รายสัปดาห์: ชุดคำ → เด็กที่ต้องท่อง → คำศัพท์ (รูปเก็บเป็นไฟล์ใน data/vocab) → ผลสอบแต่ละครั้ง
+  // เกมท่องคำศัพท์รายสัปดาห์: ชุดคำ → เด็กที่ต้องท่อง → คำศัพท์ (รูปเก็บเป็นไฟล์ใน data/vocab) → ผลภารกิจแต่ละครั้ง
   (db) => {
     db.exec(`
       CREATE TABLE vocab_sets (
@@ -334,6 +334,32 @@ const MIGRATIONS = [
         UNIQUE (phone_id, client_id)
       );
       CREATE INDEX app_block_hits_day ON app_block_hits(day, pkg);
+    `);
+  },
+
+  // มินิเกมป๊อปลูกโป่ง (คณิต): ตั้งค่าต่อเด็ก (ไม่มีแถว = ค่าเริ่มต้น) + ผลแต่ละรอบ (ดาวภารกิจวันนี้ผูกกับรอบที่ได้)
+  (db) => {
+    db.exec(`
+      CREATE TABLE math_settings (
+        kid_id INTEGER PRIMARY KEY REFERENCES kids(id) ON DELETE CASCADE,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        level INTEGER NOT NULL DEFAULT 2,
+        goal INTEGER NOT NULL DEFAULT 15,
+        stars INTEGER NOT NULL DEFAULT 1
+      );
+      CREATE TABLE math_rounds (
+        id INTEGER PRIMARY KEY,
+        kid_id INTEGER NOT NULL REFERENCES kids(id) ON DELETE CASCADE,
+        day TEXT NOT NULL,
+        level INTEGER NOT NULL,
+        score INTEGER NOT NULL,
+        correct INTEGER NOT NULL,
+        wrong INTEGER NOT NULL,
+        best_combo INTEGER NOT NULL,
+        tx_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL DEFAULT ${NOW}
+      );
+      CREATE INDEX math_rounds_kid_day ON math_rounds(kid_id, day);
     `);
   },
 ];

@@ -1,5 +1,5 @@
-// เกมท่องคำศัพท์รายสัปดาห์ — ผู้ปกครองสร้างชุดคำ (เลือกเด็ก + เกณฑ์ผ่าน + ดาว) เด็กท่องบัตรคำแล้วสอบ
-// สอบผ่านครั้งแรกได้ดาว · สอบซ้ำได้เรื่อยๆ แต่ไม่ได้ดาวเพิ่ม (ถ้าผู้ปกครองยกเลิกดาวรายการนั้น สอบผ่านใหม่ได้ดาวอีกครั้ง)
+// มินิเกมคำศัพท์รายสัปดาห์ — ผู้ปกครองสร้างชุดคำ (เลือกเด็ก + เกณฑ์ผ่าน + ดาว) เด็กท่องบัตรคำแล้วทำภารกิจ
+// ภารกิจสำเร็จครั้งแรกได้ดาว · ทำซ้ำได้เรื่อยๆ แต่ไม่ได้ดาวเพิ่ม (ถ้าผู้ปกครองยกเลิกดาวรายการนั้น ทำสำเร็จใหม่ได้ดาวอีกครั้ง)
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -41,7 +41,7 @@ export function createVocab({ db, push, changed, mustKid, device, awardStars, me
     ),
     wordsOf: db.prepare('SELECT * FROM vocab_words WHERE set_id = ? ORDER BY sort_order, id'),
     word: db.prepare('SELECT * FROM vocab_words WHERE id = ?'),
-    // ผลสอบต่อเด็กต่อชุด: ครั้งที่ดีที่สุด, จำนวนครั้ง, ได้ดาวแล้วหรือยัง (ดาวที่ถูกยกเลิกไม่นับ)
+    // ผลภารกิจต่อเด็กต่อชุด: ครั้งที่ดีที่สุด, จำนวนครั้ง, ได้ดาวแล้วหรือยัง (ดาวที่ถูกยกเลิกไม่นับ)
     results: db.prepare(`
       SELECT a.set_id AS setId, a.kid_id AS kidId, COUNT(*) AS attempts, MAX(a.correct * 1.0 / a.total) AS best,
              MAX(a.passed) AS passed,
@@ -133,19 +133,19 @@ export function createVocab({ db, push, changed, mustKid, device, awardStars, me
     let correct = 0;
     for (const a of answers) {
       const w = byId.get(Number(a?.wordId));
-      if (!w || seen.has(w.id)) throw new HttpError(409, 'คำศัพท์ชุดนี้เพิ่งถูกแก้ ลองสอบใหม่อีกครั้ง');
+      if (!w || seen.has(w.id)) throw new HttpError(409, 'คำศัพท์ชุดนี้เพิ่งถูกแก้ ลองทำภารกิจใหม่อีกครั้ง');
       seen.add(w.id);
       if (a.mode === 'choice') correct += String(a.answer ?? '').trim() === w.meaning ? 1 : 0;
       else if (a.mode === 'spell') correct += normalizeSpelling(a.answer) === normalizeSpelling(w.word) ? 1 : 0;
       else throw bad('รูปแบบคำตอบไม่ถูกต้อง');
     }
-    if (seen.size !== words.length) throw new HttpError(409, 'คำศัพท์ชุดนี้เพิ่งถูกแก้ ลองสอบใหม่อีกครั้ง');
+    if (seen.size !== words.length) throw new HttpError(409, 'คำศัพท์ชุดนี้เพิ่งถูกแก้ ลองทำภารกิจใหม่อีกครั้ง');
 
     const total = words.length;
     const passed = correct * 100 >= set.pass_pct * total;
     const result = db.transaction(() => {
       const earn = passed && !s.rewarded.get(set.id, kid.id);
-      const txId = earn ? awardStars(kid.id, set.stars, `สอบคำศัพท์ผ่าน: ${set.title}`) : null;
+      const txId = earn ? awardStars(kid.id, set.stars, `ภารกิจคำศัพท์: ${set.title}`) : null;
       s.insertAttempt.run({ setId: set.id, kidId: kid.id, correct, total, passed: passed ? 1 : 0, txId });
       return { correct, total, passed, stars: earn ? set.stars : 0 };
     })();
@@ -155,9 +155,9 @@ export function createVocab({ db, push, changed, mustKid, device, awardStars, me
       push.notify(
         { role: 'parent' },
         {
-          title: `📚 ${kid.avatar} ${kid.name} สอบคำศัพท์ผ่าน!`,
+          title: `📚 ${kid.avatar} ${kid.name} ทำภารกิจคำศัพท์สำเร็จ!`,
           body: `${set.title} · ถูก ${correct}/${total} ได้ ${set.stars} ดาว`,
-          url: '/parent/manage?tab=vocab',
+          url: '/parent/manage?tab=games',
           tag: `vocab-${set.id}-${kid.id}`,
         },
       );

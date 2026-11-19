@@ -20,6 +20,7 @@ import { broadcast, eventsHandler } from './events.js';
 import { createPush } from './push.js';
 import { createScreen } from './screen.js';
 import { createVocab } from './vocab.js';
+import { createGames } from './games.js';
 import { HttpError, bad, emoji, familyCode, oneOf, optionalText, pin, text, wholeNumber } from './validate.js';
 
 export const KID_COLORS = ['pink', 'sky', 'mint', 'lemon', 'lavender', 'peach'];
@@ -128,14 +129,14 @@ export function createApp(db, { appUrl, distDir, mediaDir } = {}) {
   const screen = createScreen({ db, push, changed, mustKid, mustReward, kidStars, createRequest });
   Object.assign(app.locals, { push, screen }); // ให้เทสต์ดูการแจ้งเตือน / สั่งตรวจเครื่องเงียบเองได้
 
-  // ดาวจากเกมท่องคำศัพท์ — นับเป็นดาวสะสมเหมือนทำดี
-  function awardStars(kidId, stars, title) {
+  // ดาวจากมินิเกม (คำศัพท์ / คณิต) — นับเป็นดาวสะสมเหมือนทำดี
+  function awardStars(kidId, stars, title, emoji = '📚') {
     const { lastInsertRowid } = q.insertTx.run({
       kidId,
       type: 'earn',
       amount: stars,
       title,
-      emoji: '📚',
+      emoji,
       severity: null,
       note: null,
       activityId: null,
@@ -145,6 +146,7 @@ export function createApp(db, { appUrl, distDir, mediaDir } = {}) {
     return Number(lastInsertRowid);
   }
   const vocab = createVocab({ db, push, changed, mustKid, device, awardStars, mediaDir });
+  const games = createGames({ db, push, changed, mustKid, device, awardStars });
 
   function state() {
     return {
@@ -596,8 +598,10 @@ export function createApp(db, { appUrl, distDir, mediaDir } = {}) {
 
   screen.mountParent(P);
   vocab.mountParent(P);
+  games.mountParent(P);
   app.use('/api/parent', P);
   app.use('/api/vocab', vocab.router);
+  app.use('/api/games', games.router);
   app.use('/api/phone', screen.phoneRouter);
   app.use('/api', (req, res) => res.status(404).json({ error: 'not-found', message: 'ไม่พบ API นี้' }));
 

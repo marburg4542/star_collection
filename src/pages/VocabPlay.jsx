@@ -1,4 +1,4 @@
-// เด็ก: ท่องบัตรคำ (?mode=cards) และสอบ (?mode=test) ของชุดคำศัพท์หนึ่งชุด
+// เด็ก: ท่องบัตรคำ (?mode=cards) และทำภารกิจ (?mode=test) ของชุดคำศัพท์หนึ่งชุด
 import { useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
@@ -18,7 +18,7 @@ export default function VocabPlay() {
   const [round, setRound] = useState(0);
 
   if (!kid) return <Navigate to="/" replace />;
-  const back = `/kid/${kid.id}?tab=vocab`;
+  const back = `/kid/${kid.id}/games/vocab`;
   if (!loaded) return <Spinner />;
   if (!set || !set.words.length || !set.kidIds.includes(kid.id)) return <Navigate to={back} replace />;
 
@@ -29,7 +29,7 @@ export default function VocabPlay() {
           ← กลับ
         </Link>
         <p className="min-w-0 flex-1 truncate text-right font-bold">
-          {mode === 'test' ? '✍️ สอบ' : '🃏 บัตรคำ'} · {set.title}
+          {mode === 'test' ? '🎯 ภารกิจ' : '🃏 บัตรคำ'} · {set.title}
         </p>
       </header>
       {mode === 'cards' ? (
@@ -130,7 +130,7 @@ function Flashcards({ set }) {
         </button>
         {last ? (
           <button className="btn btn-primary flex-[1.4] text-lg" onClick={() => navigate('?mode=test', { replace: true })}>
-            พร้อมสอบ ✍️
+            ทำภารกิจ 🎯
           </button>
         ) : (
           <button className="btn btn-primary flex-[1.4] text-lg" onClick={() => go(at + 1)}>
@@ -142,7 +142,7 @@ function Flashcards({ set }) {
   );
 }
 
-// ---------- สอบ ----------
+// ---------- ภารกิจ ----------
 
 /** สลับข้อ ครึ่งหนึ่งเลือกคำแปล (4 ตัวเลือก) อีกครึ่งพิมพ์สะกด — ตัวเลือกหลอกเอาจากชุดเดียวกันก่อน ไม่พอค่อยเอาจากชุดอื่น */
 function buildQuestions(set, sets) {
@@ -215,10 +215,10 @@ function Test({ set, sets, kid, back, onRetry }) {
     return (
       <div className="mt-10 text-center">
         <div className="text-6xl">😵</div>
-        <p className="mt-3 text-lg font-bold">ส่งผลสอบไม่สำเร็จ</p>
+        <p className="mt-3 text-lg font-bold">ส่งผลไม่สำเร็จ</p>
         <p className="mt-1 text-mute">{error}</p>
         <button className="btn btn-primary mt-6 w-full" onClick={onRetry}>
-          สอบใหม่
+          ลองใหม่
         </button>
       </div>
     );
@@ -230,7 +230,7 @@ function Test({ set, sets, kid, back, onRetry }) {
       <div className="mt-4 flex flex-1 flex-col">
         <section className="card animate-pop px-5 pb-5 pt-6 text-center">
           <div className="text-7xl">{result.passed ? '🏆' : '💪'}</div>
-          <p className="mt-2 text-2xl font-bold">{result.passed ? `ผ่านแล้ว! เก่งมาก ${kid.name}` : 'เกือบแล้ว! สู้ๆ'}</p>
+          <p className="mt-2 text-2xl font-bold">{result.passed ? `ภารกิจสำเร็จ! เก่งมาก ${kid.name}` : 'เกือบแล้ว! สู้ๆ'}</p>
           <p className="my-2 text-6xl font-bold tabular">
             {result.correct}
             <span className="text-3xl text-mute">/{result.total}</span>
@@ -240,10 +240,10 @@ function Test({ set, sets, kid, back, onRetry }) {
               ได้ <StarCount value={result.stars} size={26} /> ดาว 🎉
             </p>
           )}
-          {result.passed && !result.stars && <p className="text-mute">ชุดนี้ได้ดาวไปแล้ว สอบซ้ำเพื่อฝึกได้เรื่อยๆ</p>}
+          {result.passed && !result.stars && <p className="text-mute">ชุดนี้ได้ดาวไปแล้ว ทำซ้ำเพื่อฝึกได้เรื่อยๆ</p>}
           {!result.passed && (
             <p className="text-mute">
-              ต้องถูกอย่างน้อย {passCount(set)} ข้อ ({set.passPct}%) ท่องบัตรคำอีกนิดแล้วสอบใหม่นะ
+              ต้องถูกอย่างน้อย {passCount(set)} ข้อ ({set.passPct}%) ท่องบัตรคำอีกนิดแล้วลองใหม่นะ
             </p>
           )}
         </section>
@@ -277,7 +277,7 @@ function Test({ set, sets, kid, back, onRetry }) {
             🃏 ท่องบัตรคำ
           </button>
           <button className="btn btn-soft" onClick={onRetry}>
-            ✍️ สอบอีกครั้ง
+            🎯 ทำอีกครั้ง
           </button>
           <Link to={back} className="btn btn-primary col-span-2 text-lg">
             เสร็จแล้ว
@@ -385,7 +385,7 @@ function Test({ set, sets, kid, back, onRetry }) {
 
       {phase !== 'ask' && (
         <button className="btn btn-primary mt-auto w-full text-lg" onClick={next} disabled={phase === 'sending'} autoFocus>
-          {phase === 'sending' ? 'กำลังส่งผล…' : last ? 'ดูผลสอบ 🏁' : 'ข้อต่อไป →'}
+          {phase === 'sending' ? 'กำลังส่งผล…' : last ? 'ดูผล 🏁' : 'ข้อต่อไป →'}
         </button>
       )}
     </>

@@ -11,8 +11,9 @@ import { signed } from '../lib/format.js';
 import { Avatar, Empty, Segmented, Sheet, Spinner, Star, StarCount } from '../components/ui.jsx';
 import { TxList } from '../components/TxList.jsx';
 import { Celebration } from '../components/Feedback.jsx';
-import { WordPicture } from '../components/Vocab.jsx';
-import { WEEK_STATUS, todayKey, useVocab, weekLabel, weekStatus } from '../lib/vocab.js';
+import { useVocab } from '../lib/vocab.js';
+import { useGames } from '../lib/mathgame.js';
+import { GamesHub, vocabSetsFor } from './Games.jsx';
 
 export default function KidPage() {
   const { id } = useParams();
@@ -20,6 +21,7 @@ export default function KidPage() {
   const kid = kidById(id);
   const [params, setParams] = useSearchParams();
   const vocab = useVocab();
+  const games = useGames();
   const history = useHistory(kid?.id);
   const [celebrate, setCelebrate] = useState(null);
 
@@ -41,15 +43,17 @@ export default function KidPage() {
   const color = KID_COLORS[kid.color]?.hex;
   const available = kid.balance - kid.reserved;
   const mine = data.requests.filter((r) => r.kidId === kid.id);
-  // ชุดคำศัพท์ที่ถึงสัปดาห์แล้วและมีคำอยู่ — ไม่มีเลยก็ไม่ต้องโชว์แท็บ
-  const today = todayKey();
-  const mySets = vocab.sets.filter((s) => s.kidIds.includes(kid.id) && s.words.length && s.weekStart <= today);
+  // มินิเกม: ชุดคำศัพท์ที่ถึงสัปดาห์แล้ว + เกมคิดเลข — ไม่มีเลยก็ไม่ต้องโชว์แท็บ
+  const mySets = vocabSetsFor(vocab.sets, kid.id);
+  const math = games.math[kid.id];
+  const hasGames = mySets.length > 0 || !!math?.enabled;
   const tabs = [
-    { value: 'rewards', label: mySets.length ? '🎁 รางวัล' : '🎁 แลกรางวัล' },
-    ...(mySets.length ? [{ value: 'vocab', label: '📚 คำศัพท์' }] : []),
+    { value: 'rewards', label: hasGames ? '🎁 รางวัล' : '🎁 แลกรางวัล' },
+    ...(hasGames ? [{ value: 'games', label: '🎮 มินิเกม' }] : []),
     { value: 'history', label: '📜 ประวัติ' },
   ];
-  const tab = tabs.some((t) => t.value === params.get('tab')) ? params.get('tab') : 'rewards';
+  const asked = params.get('tab') === 'vocab' ? 'games' : params.get('tab'); // ลิงก์เก่า
+  const tab = tabs.some((t) => t.value === asked) ? asked : 'rewards';
   const setTab = (value) => setParams(value === 'rewards' ? {} : { tab: value }, { replace: true });
 
   return (
@@ -97,8 +101,8 @@ export default function KidPage() {
       <div className="mt-4">
         {tab === 'rewards' ? (
           <Rewards kid={kid} rewards={data.rewards} available={available} moneyRate={data.moneyRate ?? 1} />
-        ) : tab === 'vocab' ? (
-          <VocabSets kid={kid} sets={mySets} />
+        ) : tab === 'games' ? (
+          <GamesHub kid={kid} math={math} sets={mySets} />
         ) : !history.loaded ? (
           <Spinner />
         ) : history.items.length === 0 ? (
@@ -379,50 +383,6 @@ function MoneySheet({ open, onClose, kid, rate, available }) {
         <p className="mt-3 text-sm text-mute">ผู้ปกครองต้องกดอนุมัติก่อน ดาวถึงจะถูกใช้นะ</p>
       </div>
     </Sheet>
-  );
-}
-
-function VocabSets({ kid, sets }) {
-  return (
-    <ul className="space-y-3">
-      {sets.map((s) => {
-        const status = WEEK_STATUS[weekStatus(s.weekStart)];
-        const r = s.results[kid.id];
-        return (
-          <li key={s.id} className="card px-4 pb-4 pt-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className={`text-xs font-semibold ${status.cls}`}>
-                  {status.label} · {weekLabel(s.weekStart)}
-                </p>
-                <p className="truncate text-xl font-bold">{s.title}</p>
-                <p className="flex flex-wrap items-center gap-1 text-sm text-mute">
-                  {s.words.length} คำ · ถูก {s.passPct}% ขึ้นไป ได้ <StarCount value={s.stars} size={14} className="text-ink" />
-                </p>
-              </div>
-              <span
-                className={`shrink-0 rounded-full px-3 py-1 text-sm font-semibold ${r?.passed ? 'bg-good-soft text-good' : r ? 'bg-sunken' : 'bg-pink-50 text-purple-600'}`}
-              >
-                {r?.passed ? '✅ ผ่านแล้ว' : r ? `ดีที่สุด ${Math.round(r.best * 100)}%` : '🆕 ใหม่'}
-              </span>
-            </div>
-            <div className="no-scrollbar -mx-1 mt-3 flex gap-2 overflow-x-auto px-1" aria-hidden="true">
-              {s.words.slice(0, 8).map((w) => (
-                <WordPicture key={w.id} word={w} size={40} />
-              ))}
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2.5">
-              <Link to={`/kid/${kid.id}/vocab/${s.id}`} className="btn btn-soft">
-                🃏 บัตรคำ
-              </Link>
-              <Link to={`/kid/${kid.id}/vocab/${s.id}?mode=test`} className="btn btn-primary">
-                ✍️ สอบ
-              </Link>
-            </div>
-          </li>
-        );
-      })}
-    </ul>
   );
 }
 

@@ -1,7 +1,7 @@
 // ส่วนประกอบเกมคำศัพท์ที่ใช้ทั้งหน้าผู้ปกครองและหน้าเด็ก
 import { imageUrl } from '../lib/vocab.js';
 
-/** รูปของคำ: รูปที่อัปโหลด → อีโมจิ → 🔤 · hideName = ไม่บอกคำใน alt (ตอนสอบสะกด) */
+/** รูปของคำ: รูปที่อัปโหลด → อีโมจิ → 🔤 · hideName = ไม่บอกคำใน alt (ตอนพิมพ์สะกดในภารกิจ) */
 export function WordPicture({ word, size = 48, hideName = false, className = '' }) {
   const box = { width: size, height: size };
   if (word.image) {

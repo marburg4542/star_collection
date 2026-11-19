@@ -179,7 +179,7 @@ test('แลกดาวเป็นเงินแบบกรอกจำน�
   assert.equal((await mom.put('/api/parent/money-rate', { rate: 1 })).status, 200);
 });
 
-test('เกมคำศัพท์: สร้างชุด ใส่รูป สอบ — ได้ดาวครั้งแรกที่ผ่าน', async () => {
+test('เกมคำศัพท์: สร้างชุด ใส่รูป ทำภารกิจ — ได้ดาวครั้งแรกที่ผ่าน', async () => {
   const setBody = { title: 'ผลไม้กับสัตว์', weekStart: '2026-11-16', passPct: 80, stars: 5, kidIds: [kidA] };
   assert.equal((await kidPhone.post('/api/parent/vocab', setBody)).status, 401, 'เด็กสร้างชุดเองไม่ได้');
   assert.equal((await mom.post('/api/parent/vocab', { ...setBody, weekStart: 'next week' })).status, 400);
@@ -252,8 +252,8 @@ test('เกมคำศัพท์: สร้างชุด ใส่รู�
   assert.equal(result.passed, true);
   assert.equal(result.rewarded, true);
 
-  // ผู้ปกครองยกเลิกดาวนั้น → สอบผ่านใหม่ได้ดาวอีกครั้ง
-  const tx = (await mom.get(`/api/history?kid=${kidA}`)).body.items.find((t) => t.title === 'สอบคำศัพท์ผ่าน: ผลไม้กับสัตว์' && !t.voidedAt);
+  // ผู้ปกครองยกเลิกดาวนั้น → ทำภารกิจสำเร็จใหม่ได้ดาวอีกครั้ง
+  const tx = (await mom.get(`/api/history?kid=${kidA}`)).body.items.find((t) => t.title === 'ภารกิจคำศัพท์: ผลไม้กับสัตว์' && !t.voidedAt);
   assert.equal(tx.emoji, '📚');
   assert.equal((await mom.post(`/api/parent/transactions/${tx.id}/void`)).status, 200);
   assert.equal((await attempt(kidA, answer())).body.stars, 5);
@@ -268,6 +268,59 @@ test('เกมคำศัพท์: สร้างชุด ใส่รู�
 
   assert.equal((await mom.del(`/api/parent/vocab/${setId}`)).status, 200);
   assert.ok(!(await kidPhone.get('/api/vocab')).body.sets.some((s) => s.id === setId));
+});
+
+test('มินิเกมป๊อปลูกโป่ง: ตั้งระดับต่อเด็ก, ภารกิจวันนี้ได้ดาววันละครั้ง', async () => {
+  const sent = [];
+  const realNotify = app.locals.push.notify;
+  app.locals.push.notify = (target, payload) => sent.push({ target, payload });
+  try {
+    const mathOf = async () => (await kidPhone.get('/api/games')).body.math[kidA];
+    let m = await mathOf();
+    assert.deepEqual({ enabled: m.enabled, level: m.level, goal: m.goal, stars: m.stars }, { enabled: true, level: 2, goal: 15, stars: 1 }, 'ค่าเริ่มต้น');
+    assert.equal(m.best, null);
+    assert.equal((await stranger.get('/api/games')).status, 401);
+
+    const url = `/api/parent/games/math/${kidA}`;
+    assert.equal((await kidPhone.put(url, { enabled: true, level: 5, goal: 5, stars: 2 })).status, 401, 'เด็กตั้งเองไม่ได้');
+    assert.equal((await mom.put(url, { enabled: true, level: 9, goal: 5, stars: 2 })).status, 400);
+    assert.equal((await mom.put(url, { enabled: true, level: 1, goal: 10, stars: 2 })).status, 200);
+
+    const round = (r) => kidPhone.post('/api/games/math/rounds', { kidId: kidA, level: 1, score: 0, correct: 0, wrong: 3, bestCombo: 0, ...r });
+    assert.equal((await round({ correct: 5, score: 9999 })).status, 400, 'คะแนนเกินที่เป็นไปได้');
+    assert.equal((await round({ correct: 5, wrong: 7, score: 50 })).status, 400);
+    assert.equal((await round({ correct: 5, bestCombo: 9, score: 50 })).status, 400);
+
+    const before = (await mom.get('/api/state')).body.kids.find((k) => k.id === kidA);
+    let r = await round({ correct: 8, score: 120, bestCombo: 5 });
+    assert.deepEqual(r.body, { stars: 0, goal: 10, newBest: true }, 'ยังไม่ถึงเป้า');
+    sent.length = 0;
+    r = await round({ correct: 12, score: 200, bestCombo: 9 });
+    assert.deepEqual(r.body, { stars: 2, goal: 10, newBest: true }, 'ถึงเป้า ได้ดาว');
+    assert.match(sent[0].payload.title, /ทำภารกิจคณิตวันนี้สำเร็จ/);
+    r = await round({ correct: 14, score: 150, bestCombo: 4 });
+    assert.deepEqual(r.body, { stars: 0, goal: 10, newBest: false }, 'วันเดียวกันไม่ได้ดาวซ้ำ');
+    const after = (await mom.get('/api/state')).body.kids.find((k) => k.id === kidA);
+    assert.equal(after.balance, before.balance + 2);
+    assert.equal(after.total, before.total + 2);
+
+    m = await mathOf();
+    assert.equal(m.best.score, 200);
+    assert.deepEqual(m.today, { rounds: 3, bestCorrect: 14, rewarded: true });
+
+    // ผู้ปกครองยกเลิกดาวนั้น → ทำใหม่ได้ดาวอีกครั้งวันนี้
+    const tx = (await mom.get(`/api/history?kid=${kidA}`)).body.items.find((t) => t.emoji === '🎈' && !t.voidedAt);
+    assert.equal((await mom.post(`/api/parent/transactions/${tx.id}/void`)).status, 200);
+    assert.equal((await mathOf()).today.rewarded, false);
+    assert.equal((await round({ correct: 10, score: 100 })).body.stars, 2);
+
+    // ปิดเกม → ส่งผลไม่ได้
+    assert.equal((await mom.put(url, { enabled: false, level: 1, goal: 10, stars: 2 })).status, 200);
+    assert.equal((await round({ correct: 1, score: 10 })).status, 400);
+    assert.equal((await mom.put(url, { enabled: true, level: 2, goal: 15, stars: 1 })).status, 200);
+  } finally {
+    app.locals.push.notify = realNotify;
+  }
 });
 
 test('เปลี่ยนรหัสครอบครัวแล้วเครื่องอื่นหลุด', async () => {

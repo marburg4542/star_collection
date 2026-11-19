@@ -236,6 +236,76 @@
     70% { opacity: 1; }
     100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1) rotate(var(--rot)); opacity: 0; }
   }
+
+  /* มินิเกมป๊อปลูกโป่ง — ลอยขึ้นจากใต้สนามจนพ้นขอบบน (ระยะเวลาต่อลูกมาจาก style) */
+  .balloon {
+    position: absolute;
+    top: 100%;
+    width: 84px;
+    padding: 0;
+    border: 0;
+    background: none;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    animation-name: balloon-rise;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
+  }
+  @keyframes balloon-rise {
+    from { top: 100%; }
+    to { top: -130px; }
+  }
+  .balloon-field.paused .balloon,
+  .balloon-field.paused .balloon-sway {
+    animation-play-state: paused;
+  }
+  .balloon-sway {
+    position: relative;
+    display: block;
+    animation: balloon-sway 2.4s ease-in-out infinite alternate;
+  }
+  @keyframes balloon-sway {
+    from { transform: translateX(-5px) rotate(-4deg); }
+    to { transform: translateX(5px) rotate(4deg); }
+  }
+  .balloon-num {
+    position: absolute;
+    inset-inline: 0;
+    top: 22px;
+    text-align: center;
+    font-size: 1.9rem;
+    font-weight: 700;
+    line-height: 1;
+    color: #2b2238;
+  }
+  .balloon-popped .balloon-sway {
+    animation: balloon-pop 0.3s ease-out forwards;
+  }
+  @keyframes balloon-pop {
+    to { transform: scale(1.6); opacity: 0; }
+  }
+  .balloon-wrong .balloon-sway {
+    animation: balloon-wrong 0.5s ease forwards;
+  }
+  @keyframes balloon-wrong {
+    25% { transform: translateX(-8px) rotate(-8deg); }
+    50% { transform: translateX(8px) rotate(8deg); }
+    100% { transform: scale(0.75); opacity: 0.45; }
+  }
+  .balloon-burst {
+    position: absolute;
+    left: 50%;
+    top: 34px;
+    font-size: 3rem;
+    transform: translate(-50%, -50%);
+  }
+  .balloon-floater {
+    animation: balloon-floater 0.7s ease-out forwards;
+  }
+  @keyframes balloon-floater {
+    from { opacity: 1; transform: translate(-50%, 0); }
+    to { opacity: 0; transform: translate(-50%, -48px); }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -245,6 +315,13 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+  /* ลูกโป่งลอยขึ้นคือตัวเกม ต้องเคลื่อนตามเวลาจริง — ตัดแค่การโยกไปมา */
+  .balloon {
+    animation-duration: var(--rise-dur) !important;
+  }
+  .balloon-sway {
+    animation: none !important;
   }
 }
 
