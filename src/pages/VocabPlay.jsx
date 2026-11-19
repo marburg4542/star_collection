@@ -3,7 +3,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useStore } from '../lib/store.jsx';
-import { canSpeak, passCount, shuffle, speak, speakLetters, useVocab } from '../lib/vocab.js';
+import { canSpeak, passCount, shuffle, speak, useVocab } from '../lib/vocab.js';
 import { Spinner, StarCount } from '../components/ui.jsx';
 import { WordPicture } from '../components/Vocab.jsx';
 
@@ -63,9 +63,6 @@ function SpeakButtons({ word, example }) {
     <div className="mt-3 flex flex-wrap justify-center gap-2">
       <button className="btn btn-soft min-h-11 px-4" onClick={() => speak(word)}>
         🔊 ฟังเสียง
-      </button>
-      <button className="btn btn-soft min-h-11 px-4" onClick={() => speakLetters(word)}>
-        🔤 ฟังสะกด
       </button>
       {example && (
         <button className="btn btn-soft min-h-11 px-4" onClick={() => speak(example, 0.85)}>

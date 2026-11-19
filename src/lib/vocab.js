@@ -54,8 +54,6 @@ export const WEEK_STATUS = {
 };
 
 // ---------- คำ ----------
-/** "ice cream" → ['I','C','E',' ','C','R','E','A','M'] */
-export const letters = (word) => [...word.trim()].map((c) => (c === ' ' ? ' ' : c.toUpperCase()));
 export const passCount = (set) => Math.ceil((set.passPct * set.words.length) / 100);
 
 export function shuffle(list) {
@@ -84,8 +82,6 @@ export function speak(text, rate = 0.8) {
   if (voice) u.voice = voice;
   synth.speak(u);
 }
-/** อ่านทีละตัวอักษร: "A. P. P. L. E." */
-export const speakLetters = (word) => speak(letters(word).filter((c) => c !== ' ').join('. ') + '.', 0.6);
 
 // ---------- รูป ----------
 /** ย่อรูปจากกล้อง/คลังภาพให้ด้านยาวไม่เกิน max px แล้วแปลงเป็น JPEG (รูปจากมือถือหลาย MB → ราว 100 KB) */
