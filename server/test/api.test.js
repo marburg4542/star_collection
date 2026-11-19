@@ -270,54 +270,84 @@ test('เกมคำศัพท์: สร้างชุด ใส่รู�
   assert.ok(!(await kidPhone.get('/api/vocab')).body.sets.some((s) => s.id === setId));
 });
 
-test('มินิเกมป๊อปลูกโป่ง: ตั้งระดับต่อเด็ก, ภารกิจวันนี้ได้ดาววันละครั้ง', async () => {
+test('มินิเกม: ตั้งค่าต่อเด็กต่อเกม, ตอบถูกทุก N ข้อในรอบเดียวได้ M ดาว, เพดานดาวรวมต่อวัน', async () => {
   const sent = [];
   const realNotify = app.locals.push.notify;
   app.locals.push.notify = (target, payload) => sent.push({ target, payload });
   try {
-    const mathOf = async () => (await kidPhone.get('/api/games')).body.math[kidA];
-    let m = await mathOf();
-    assert.deepEqual({ enabled: m.enabled, level: m.level, goal: m.goal, stars: m.stars }, { enabled: true, level: 2, goal: 15, stars: 1 }, 'ค่าเริ่มต้น');
-    assert.equal(m.best, null);
+    const gamesOf = async () => (await kidPhone.get('/api/games')).body.kids[kidA];
+    let g = await gamesOf();
+    assert.equal(g.dailyStars, 3, 'เพดานเริ่มต้น');
+    assert.equal(g.todayStars, 0);
+    assert.deepEqual(
+      { enabled: g.math.enabled, levels: g.math.levels, every: g.math.every, stars: g.math.stars },
+      { enabled: true, levels: [2], every: 10, stars: 1 },
+      'ค่าเริ่มต้นป๊อปลูกโป่ง',
+    );
+    assert.deepEqual(g.scale.levels, [2]);
+    assert.deepEqual(g.shop.levels, [1]);
+    assert.equal(g.math.best, null);
     assert.equal((await stranger.get('/api/games')).status, 401);
 
-    const url = `/api/parent/games/math/${kidA}`;
-    assert.equal((await kidPhone.put(url, { enabled: true, level: 5, goal: 5, stars: 2 })).status, 401, 'เด็กตั้งเองไม่ได้');
-    assert.equal((await mom.put(url, { enabled: true, level: 9, goal: 5, stars: 2 })).status, 400);
-    assert.equal((await mom.put(url, { enabled: true, level: 1, goal: 10, stars: 2 })).status, 200);
+    const url = `/api/parent/games/${kidA}`;
+    const rule = (over = {}) => ({ enabled: true, levels: [1, 4], every: 5, stars: 2, ...over });
+    assert.equal((await kidPhone.put(url, { dailyStars: 9, games: { math: rule() } })).status, 401, 'เด็กตั้งเองไม่ได้');
+    assert.equal((await mom.put(url, { games: { math: rule({ levels: [9] }) } })).status, 400, 'ระดับที่ไม่มี');
+    assert.equal((await mom.put(url, { games: { math: rule({ levels: [] }) } })).status, 400, 'ต้องเลือกอย่างน้อย 1 ระดับ');
+    assert.equal((await mom.put(url, { games: { chess: rule() } })).status, 400, 'เกมที่ไม่มี');
+    assert.equal((await mom.put(url, { games: { scale: rule({ levels: [6, 1, 6] }) } })).status, 200, 'ตาชั่งมีระดับ 6');
+    assert.equal((await mom.put(url, { games: { shop: rule({ levels: [5] }) } })).status, 400, 'ร้านค้ามีแค่ 4 ระดับ');
+    assert.equal((await mom.put(url, { dailyStars: 5, games: { math: rule() } })).status, 200);
+    g = await gamesOf();
+    assert.deepEqual(g.math.levels, [1, 4]);
+    assert.deepEqual(g.scale.levels, [1, 6], 'เรียงและตัดตัวซ้ำ');
+    assert.equal(g.dailyStars, 5);
 
-    const round = (r) => kidPhone.post('/api/games/math/rounds', { kidId: kidA, level: 1, score: 0, correct: 0, wrong: 3, bestCombo: 0, ...r });
-    assert.equal((await round({ correct: 5, score: 9999 })).status, 400, 'คะแนนเกินที่เป็นไปได้');
-    assert.equal((await round({ correct: 5, wrong: 7, score: 50 })).status, 400);
-    assert.equal((await round({ correct: 5, bestCombo: 9, score: 50 })).status, 400);
+    const round = (game, r) =>
+      kidPhone.post(`/api/games/${game}/rounds`, { kidId: kidA, levels: [1], score: 0, correct: 0, wrong: 3, bestCombo: 0, ...r });
+    assert.equal((await round('math', { correct: 5, score: 9999 })).status, 400, 'คะแนนเกินที่เป็นไปได้');
+    assert.equal((await round('math', { correct: 5, wrong: 7, score: 50 })).status, 400);
+    assert.equal((await round('math', { correct: 5, bestCombo: 9, score: 50 })).status, 400);
+    assert.equal((await round('math', { correct: 200, score: 50 })).status, 400, 'ลูกโป่ง 60 วิ ตอบไม่ได้ถึง 200 ข้อ');
+    assert.equal((await round('chess', { correct: 1, score: 10 })).status, 400);
 
     const before = (await mom.get('/api/state')).body.kids.find((k) => k.id === kidA);
-    let r = await round({ correct: 8, score: 120, bestCombo: 5 });
-    assert.deepEqual(r.body, { stars: 0, goal: 10, newBest: true }, 'ยังไม่ถึงเป้า');
+    let r = await round('math', { correct: 4, score: 40, bestCombo: 4 });
+    assert.deepEqual(r.body, { stars: 0, earned: 0, todayStars: 0, dailyStars: 5, newBest: true }, 'ยังไม่ครบ 5 ข้อ');
     sent.length = 0;
-    r = await round({ correct: 12, score: 200, bestCombo: 9 });
-    assert.deepEqual(r.body, { stars: 2, goal: 10, newBest: true }, 'ถึงเป้า ได้ดาว');
-    assert.match(sent[0].payload.title, /ทำภารกิจคณิตวันนี้สำเร็จ/);
-    r = await round({ correct: 14, score: 150, bestCombo: 4 });
-    assert.deepEqual(r.body, { stars: 0, goal: 10, newBest: false }, 'วันเดียวกันไม่ได้ดาวซ้ำ');
+    r = await round('math', { correct: 11, score: 200, bestCombo: 9, levels: [4, 1] });
+    assert.deepEqual(r.body, { stars: 4, earned: 4, todayStars: 4, dailyStars: 5, newBest: true }, 'ถูก 11 ข้อ = 2 ชุด × 2 ดาว (เศษไม่นับต่อ)');
+    assert.match(sent[0].payload.title, /ได้ 4 ดาวจากป๊อปลูกโป่ง/);
+    r = await round('scale', { correct: 30, score: 300, bestCombo: 30, levels: [6] });
+    assert.deepEqual(r.body, { stars: 1, earned: 12, todayStars: 5, dailyStars: 5, newBest: true }, 'ชนเพดานรวมทุกเกม ได้แค่ส่วนที่เหลือ');
+    r = await round('shop', { correct: 10, score: 100, bestCombo: 10 });
+    assert.equal(r.body.stars, 0, 'ครบเพดานแล้วเล่นต่อได้แต่ไม่ได้ดาว');
+    assert.equal(r.status, 200);
     const after = (await mom.get('/api/state')).body.kids.find((k) => k.id === kidA);
-    assert.equal(after.balance, before.balance + 2);
-    assert.equal(after.total, before.total + 2);
+    assert.equal(after.balance, before.balance + 5);
+    assert.equal(after.total, before.total + 5);
 
-    m = await mathOf();
-    assert.equal(m.best.score, 200);
-    assert.deepEqual(m.today, { rounds: 3, bestCorrect: 14, rewarded: true });
+    g = await gamesOf();
+    assert.equal(g.todayStars, 5);
+    assert.equal(g.math.best.score, 200);
+    assert.deepEqual(g.math.today, { rounds: 2, bestCorrect: 11, stars: 4 });
+    assert.deepEqual(g.scale.today, { rounds: 1, bestCorrect: 30, stars: 1 });
+    assert.deepEqual(g.shop.today, { rounds: 1, bestCorrect: 10, stars: 0 });
+    assert.equal((await kidPhone.get('/api/games')).body.kids[kidB].todayStars, 0, 'เพดานแยกตามเด็ก');
 
-    // ผู้ปกครองยกเลิกดาวนั้น → ทำใหม่ได้ดาวอีกครั้งวันนี้
+    // ผู้ปกครองยกเลิกดาว 4 ดวงนั้น → คืนโควตาวันนี้
     const tx = (await mom.get(`/api/history?kid=${kidA}`)).body.items.find((t) => t.emoji === '🎈' && !t.voidedAt);
+    assert.equal(tx.amount, 4);
     assert.equal((await mom.post(`/api/parent/transactions/${tx.id}/void`)).status, 200);
-    assert.equal((await mathOf()).today.rewarded, false);
-    assert.equal((await round({ correct: 10, score: 100 })).body.stars, 2);
+    assert.equal((await gamesOf()).todayStars, 1);
+    assert.equal((await round('shop', { correct: 10, score: 100 })).body.stars, 2, 'ร้านค้าใช้กติกาของตัวเอง (ค่าเริ่มต้น ทุก 5 ข้อ 1 ดาว)');
 
-    // ปิดเกม → ส่งผลไม่ได้
-    assert.equal((await mom.put(url, { enabled: false, level: 1, goal: 10, stars: 2 })).status, 200);
-    assert.equal((await round({ correct: 1, score: 10 })).status, 400);
-    assert.equal((await mom.put(url, { enabled: true, level: 2, goal: 15, stars: 1 })).status, 200);
+    // ปิดเกม → ส่งผลไม่ได้ · เพดาน 0 = เล่นได้แต่ไม่ได้ดาว
+    assert.equal((await mom.put(url, { games: { math: rule({ enabled: false }) } })).status, 200);
+    assert.equal((await round('math', { correct: 1, score: 10 })).status, 400);
+    assert.equal((await mom.put(url, { dailyStars: 0 })).status, 200);
+    assert.equal((await round('scale', { correct: 20, score: 100 })).body.stars, 0);
+    assert.equal((await mom.put(url, { dailyStars: 3, games: { math: rule({ levels: [2], every: 10, stars: 1 }) } })).status, 200);
   } finally {
     app.locals.push.notify = realNotify;
   }

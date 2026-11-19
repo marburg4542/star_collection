@@ -12,7 +12,7 @@ import { Avatar, Empty, Segmented, Sheet, Spinner, Star, StarCount } from '../co
 import { TxList } from '../components/TxList.jsx';
 import { Celebration } from '../components/Feedback.jsx';
 import { useVocab } from '../lib/vocab.js';
-import { useGames } from '../lib/mathgame.js';
+import { GAME_KEYS, useGames } from '../lib/games.js';
 import { GamesHub, vocabSetsFor } from './Games.jsx';
 
 export default function KidPage() {
@@ -43,10 +43,10 @@ export default function KidPage() {
   const color = KID_COLORS[kid.color]?.hex;
   const available = kid.balance - kid.reserved;
   const mine = data.requests.filter((r) => r.kidId === kid.id);
-  // มินิเกม: ชุดคำศัพท์ที่ถึงสัปดาห์แล้ว + เกมคิดเลข — ไม่มีเลยก็ไม่ต้องโชว์แท็บ
+  // มินิเกม: ชุดคำศัพท์ที่ถึงสัปดาห์แล้ว + เกมคิดเลขที่เปิดอยู่ — ไม่มีเลยก็ไม่ต้องโชว์แท็บ
   const mySets = vocabSetsFor(vocab.sets, kid.id);
-  const math = games.math[kid.id];
-  const hasGames = mySets.length > 0 || !!math?.enabled;
+  const kg = games.kids[kid.id];
+  const hasGames = mySets.length > 0 || GAME_KEYS.some((k) => kg?.[k]?.enabled);
   const tabs = [
     { value: 'rewards', label: hasGames ? '🎁 รางวัล' : '🎁 แลกรางวัล' },
     ...(hasGames ? [{ value: 'games', label: '🎮 มินิเกม' }] : []),
@@ -102,7 +102,7 @@ export default function KidPage() {
         {tab === 'rewards' ? (
           <Rewards kid={kid} rewards={data.rewards} available={available} moneyRate={data.moneyRate ?? 1} />
         ) : tab === 'games' ? (
-          <GamesHub kid={kid} math={math} sets={mySets} />
+          <GamesHub kid={kid} kg={kg} sets={mySets} />
         ) : !history.loaded ? (
           <Spinner />
         ) : history.items.length === 0 ? (

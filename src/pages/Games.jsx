@@ -2,9 +2,9 @@
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useStore } from '../lib/store.jsx';
 import { KID_COLORS } from '../lib/constants.js';
-import { LEVELS } from '../lib/mathgame.js';
+import { GAMES, GAME_KEYS, starsLeftToday } from '../lib/games.js';
 import { WEEK_STATUS, todayKey, useVocab, weekLabel, weekStatus } from '../lib/vocab.js';
-import { Empty, Spinner, StarCount } from '../components/ui.jsx';
+import { Empty, Spinner, Star, StarCount } from '../components/ui.jsx';
 import { WordPicture } from '../components/Vocab.jsx';
 
 /** ชุดคำศัพท์ที่เด็กคนนี้เล่นได้ตอนนี้ (ถึงสัปดาห์แล้ว และมีคำอยู่) */
@@ -35,31 +35,54 @@ function GameCard({ to, emoji, color, title, sub, children, cta }) {
   );
 }
 
+/** ระดับที่เลือกไว้ แบบสั้น: 1–2 ระดับบอกชื่อ · มากกว่านั้นบอกแค่อีโมจิ */
+export function levelsText(game, levels) {
+  const meta = GAMES[game].levels;
+  if (levels.length <= 2) return levels.map((l) => `${meta[l].emoji} ${meta[l].label}`).join(' · ');
+  return `${levels.map((l) => meta[l].emoji).join(' ')} คละ ${levels.length} ระดับ`;
+}
+
 /** แท็บ "มินิเกม" ในหน้าเด็ก */
-export function GamesHub({ kid, math, sets }) {
+export function GamesHub({ kid, kg, sets }) {
   const newSets = sets.filter((s) => !s.results[kid.id]?.passed).length;
+  const left = starsLeftToday(kg);
+  const anyMath = GAME_KEYS.some((k) => kg?.[k]?.enabled);
   return (
     <div className="space-y-3">
-      {math?.enabled && (
-        <GameCard
-          to={`/kid/${kid.id}/games/math`}
-          emoji="🎈"
-          color={KID_COLORS.sky.hex}
-          title="ป๊อปลูกโป่ง"
-          sub={`เกมคิดเลขเร็ว · ${LEVELS[math.level].emoji} ${LEVELS[math.level].label}`}
-          cta="เล่นเลย 🎈"
-        >
-          {math.today.rewarded ? (
-            <span className="font-semibold text-good">✅ ภารกิจวันนี้สำเร็จแล้ว</span>
-          ) : (
-            <span className="flex flex-wrap items-center gap-1">
-              🎯 ภารกิจวันนี้: ตอบถูก {math.goal} ข้อในรอบเดียว → <StarCount value={math.stars} size={15} />
-              {math.today.bestCorrect > 0 && <span className="text-mute">(ดีที่สุดวันนี้ {math.today.bestCorrect})</span>}
-            </span>
-          )}
-          {math.best && <span className="mt-0.5 block text-sm text-mute">🏆 สถิติ {math.best.score} คะแนน</span>}
-        </GameCard>
+      {anyMath && kg.dailyStars > 0 && (
+        <p className="flex flex-wrap items-center justify-center gap-1.5 rounded-2xl bg-gold-200 px-3 py-2 text-[15px] font-semibold ring-1 ring-line/20">
+          <Star size={18} /> ดาวจากมินิเกมวันนี้
+          <b className="tabular">
+            {kg.todayStars}/{kg.dailyStars}
+          </b>
+          {left === 0 && <span className="text-good">✅ ครบแล้ว เล่นทำสถิติต่อได้</span>}
+        </p>
       )}
+      {GAME_KEYS.map((key) => {
+        const g = kg?.[key];
+        if (!g?.enabled) return null;
+        const info = GAMES[key];
+        return (
+          <GameCard key={key} to={`/kid/${kid.id}/games/${key}`} emoji={info.emoji} color={info.color} title={info.title} sub={info.sub} cta={`เล่นเลย ${info.emoji}`}>
+            <span className="block font-semibold">{levelsText(key, g.levels)}</span>
+            {kg.dailyStars > 0 && left > 0 && (
+              <span className="mt-0.5 flex flex-wrap items-center gap-1">
+                🎯 ตอบถูกทุก {g.every} ข้อในรอบเดียว → <StarCount value={g.stars} size={15} />
+              </span>
+            )}
+            {(g.best || g.today.stars > 0) && (
+              <span className="mt-0.5 flex flex-wrap items-center gap-1 text-sm text-mute">
+                {g.best && `🏆 สถิติ ${g.best.score} คะแนน`}
+                {g.today.stars > 0 && (
+                  <>
+                    {g.best && ' · '}วันนี้ได้ <StarCount value={g.today.stars} size={13} className="text-ink" />
+                  </>
+                )}
+              </span>
+            )}
+          </GameCard>
+        );
+      })}
       {sets.length > 0 && (
         <GameCard
           to={`/kid/${kid.id}/games/vocab`}

@@ -76,6 +76,7 @@ export function Segmented({ value, onChange, options, className = '' }) {
     <div className={`flex rounded-full border-2 border-line bg-card p-1 ${className}`} role="tablist">
       {options.map((o) => (
         <button
+          type="button"
           key={o.value}
           role="tab"
           aria-selected={value === o.value}

@@ -306,6 +306,61 @@
     from { opacity: 1; transform: translate(-50%, 0); }
     to { opacity: 0; transform: translate(-50%, -48px); }
   }
+  /* มินิเกมตาชั่งตัวเลข: คาน/จานเลื่อนไปตามมุมเอียง (เด้งนิดๆ) · ตอนรอคำตอบโยกเบาๆ ±3° (แขนยาว 100 → จานขึ้นลง ±5.2) */
+  .scale-move {
+    transition: transform 0.6s cubic-bezier(0.34, 1.4, 0.64, 1);
+  }
+  .scale-idle-beam {
+    animation: scale-idle-beam 1.6s ease-in-out infinite alternate;
+  }
+  .scale-idle-left {
+    animation: scale-idle-left 1.6s ease-in-out infinite alternate;
+  }
+  .scale-idle-right {
+    animation: scale-idle-right 1.6s ease-in-out infinite alternate;
+  }
+  @keyframes scale-idle-beam {
+    from { transform: rotate(-3deg); }
+    to { transform: rotate(3deg); }
+  }
+  @keyframes scale-idle-left {
+    from { transform: translateY(5.2px); }
+    to { transform: translateY(-5.2px); }
+  }
+  @keyframes scale-idle-right {
+    from { transform: translateY(-5.2px); }
+    to { transform: translateY(5.2px); }
+  }
+  .weight-btn {
+    border-radius: 1.25rem;
+    padding: 0.25rem 0;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.12s;
+  }
+  .weight-btn:not(:disabled):active {
+    transform: scale(0.92);
+  }
+  /* มินิเกมร้านค้า: ปุ่มเหรียญ/แบงก์ */
+  .money-btn {
+    display: grid;
+    place-items: center;
+    min-height: 3.5rem;
+    border-radius: 1rem;
+    border: 2px solid var(--color-line);
+    background: var(--color-card);
+    box-shadow: 0 3px 0 var(--color-line);
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.1s, box-shadow 0.1s;
+  }
+  .money-btn:not(:disabled):active {
+    transform: translateY(3px);
+    box-shadow: 0 0 0 var(--color-line);
+  }
+  .money-btn:disabled {
+    opacity: 0.5;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

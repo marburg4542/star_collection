@@ -362,6 +362,48 @@ const MIGRATIONS = [
       CREATE INDEX math_rounds_kid_day ON math_rounds(kid_id, day);
     `);
   },
+
+  // มินิเกมหลายเกม (ป๊อปลูกโป่ง / ตาชั่งตัวเลข / ร้านค้า): ตั้งค่าต่อเด็กต่อเกม (เลือกได้หลายระดับ, ตอบถูกทุก N ข้อได้ M ดาว)
+  // + เพดานดาวจากมินิเกมต่อวันต่อเด็ก (รวมทุกเกม) — ย้ายข้อมูลป๊อปลูกโป่งเดิมมาด้วย (เป้าหมายเดิม = N)
+  (db) => {
+    db.exec(`
+      CREATE TABLE game_settings (
+        kid_id INTEGER NOT NULL REFERENCES kids(id) ON DELETE CASCADE,
+        game TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        levels TEXT NOT NULL,
+        every INTEGER NOT NULL,
+        stars INTEGER NOT NULL,
+        PRIMARY KEY (kid_id, game)
+      );
+      CREATE TABLE game_limits (
+        kid_id INTEGER PRIMARY KEY REFERENCES kids(id) ON DELETE CASCADE,
+        daily_stars INTEGER NOT NULL
+      );
+      CREATE TABLE game_rounds (
+        id INTEGER PRIMARY KEY,
+        kid_id INTEGER NOT NULL REFERENCES kids(id) ON DELETE CASCADE,
+        game TEXT NOT NULL,
+        day TEXT NOT NULL,
+        levels TEXT NOT NULL,
+        score INTEGER NOT NULL,
+        correct INTEGER NOT NULL,
+        wrong INTEGER NOT NULL,
+        best_combo INTEGER NOT NULL,
+        tx_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL DEFAULT ${NOW}
+      );
+      CREATE INDEX game_rounds_kid_day ON game_rounds(kid_id, day);
+      CREATE INDEX game_rounds_kid_game ON game_rounds(kid_id, game, score);
+
+      INSERT INTO game_settings (kid_id, game, enabled, levels, every, stars)
+        SELECT kid_id, 'math', enabled, json_array(level), goal, stars FROM math_settings;
+      INSERT INTO game_rounds (kid_id, game, day, levels, score, correct, wrong, best_combo, tx_id, created_at)
+        SELECT kid_id, 'math', day, json_array(level), score, correct, wrong, best_combo, tx_id, created_at FROM math_rounds ORDER BY id;
+      DROP TABLE math_rounds;
+      DROP TABLE math_settings;
+    `);
+  },
 ];
 
 export function minutesFromName(name) {

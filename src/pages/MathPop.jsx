@@ -1,26 +1,16 @@
 // มินิเกม "ป๊อปลูกโป่ง": โจทย์อยู่บน ลูกโป่งตัวเลขลอยขึ้น แตะลูกที่ถูกก่อนหลุดจอ · 60 วิ · หัวใจ 3 ดวง · ตอบถูกติดกันได้คอมโบ
+// ผู้ปกครองเลือกได้หลายระดับ — แต่ละข้อสุ่มระดับจากที่เลือกไว้
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { Link, Navigate, useParams } from 'react-router-dom';
-import { api } from '../lib/api.js';
-import { useStore } from '../lib/store.jsx';
-import { BALLOON_COLORS, HEARTS, LEVELS, ROUND_MS, isMuted, makeQuestion, setMuted, sfx, unlockAudio, useGames, wrongAnswers } from '../lib/mathgame.js';
-import { Spinner, StarCount } from '../components/ui.jsx';
+import { Link } from 'react-router-dom';
+import { HEARTS, multiplier, pick, sfx, shuffle, starsLeftToday, unlockAudio } from '../lib/games.js';
+import { BALLOON_COLORS, ROUND_MS, makeQuestion, wrongAnswers } from '../lib/mathgame.js';
+import { GameHeader, GamePage, Pill, ReadyCard, ResultCard, StarStrip, useSubmitRound } from '../components/GameKit.jsx';
 
-const multiplier = (streak) => Math.min(5, 1 + Math.floor(streak / 3));
 // ลูกโป่งลอยเร็วขึ้นเรื่อยๆ ตามจำนวนข้อที่ตอบถูก
 const riseSeconds = (correct) => Math.max(3.4, 7 - correct * 0.14);
 
-function shuffle(list) {
-  const a = [...list];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-function newQuestion(level, correct, qid) {
-  const q = makeQuestion(level, correct);
+function newQuestion(levels, correct, qid) {
+  const q = makeQuestion(pick(levels), correct);
   const values = shuffle([q.answer, ...wrongAnswers(q)]);
   const lanes = shuffle([0, 1, 2, 3]);
   const colors = shuffle(BALLOON_COLORS);
@@ -47,10 +37,10 @@ function reducer(s, a) {
     case 'countdown':
       return { ...START, phase: 'countdown' };
     case 'play':
-      return { ...s, phase: 'play', q: newQuestion(a.level, 0, 1), qid: 1 };
+      return { ...s, phase: 'play', q: newQuestion(a.levels, 0, 1), qid: 1 };
     case 'next':
       if (s.phase !== 'play') return s;
-      return { ...s, q: newQuestion(a.level, s.correct, s.qid + 1), qid: s.qid + 1, popped: {} };
+      return { ...s, q: newQuestion(a.levels, s.correct, s.qid + 1), qid: s.qid + 1, popped: {} };
     case 'tap': {
       if (s.phase !== 'play' || s.popped[a.balloon.id] || s.popped.done) return s;
       if (a.balloon.value === s.q.answer) {
@@ -82,7 +72,7 @@ function reducer(s, a) {
       if (s.phase !== 'play' || s.popped.done || a.balloon.value !== s.q.answer || s.q.id !== a.qid) return s;
       const hearts = s.hearts - 1;
       if (hearts <= 0) return { ...s, hearts, wrong: s.wrong + 1, streak: 0, phase: 'over', endReason: 'hearts', last: { kind: 'miss', at: Date.now() } };
-      return { ...s, hearts, wrong: s.wrong + 1, streak: 0, last: { kind: 'miss', at: Date.now() }, q: newQuestion(a.level, s.correct, s.qid + 1), qid: s.qid + 1, popped: {} };
+      return { ...s, hearts, wrong: s.wrong + 1, streak: 0, last: { kind: 'miss', at: Date.now() }, q: newQuestion(a.levels, s.correct, s.qid + 1), qid: s.qid + 1, popped: {} };
     }
     case 'timeup':
       return s.phase === 'play' ? { ...s, phase: 'over', endReason: 'time' } : s;
@@ -92,43 +82,39 @@ function reducer(s, a) {
 }
 
 export default function MathPop() {
-  const { id } = useParams();
-  const { kidById } = useStore();
-  const kid = kidById(id);
-  const games = useGames();
-  const [round, setRound] = useState(0);
-  if (!kid) return <Navigate to="/" replace />;
-  const back = `/kid/${kid.id}?tab=games`;
-  if (!games.loaded) return <Spinner />;
-  const math = games.math[kid.id];
-  if (!math?.enabled) return <Navigate to={back} replace />;
-  return <Game key={round} kid={kid} math={math} back={back} onAgain={() => setRound((r) => r + 1)} />;
+  return <GamePage game="math">{(p) => <Game key={p.round} {...p} />}</GamePage>;
 }
 
-function Game({ kid, math, back, onAgain }) {
-  const level = math.level;
+function Game({ kid, g, kg, back, onAgain }) {
+  const levels = g.levels;
   const [s, dispatch] = useReducer(reducer, START);
   const [count, setCount] = useState(3);
   const [left, setLeft] = useState(ROUND_MS);
   const [hidden, setHidden] = useState(false);
-  const [muted, setMute] = useState(isMuted);
   const [floaters, setFloaters] = useState([]);
-  const [result, setResult] = useState(null);
+  const [starsLeft, setStarsLeft] = useState(0);
   const field = useRef(null);
-  const sent = useRef(false);
+  const result = useSubmitRound('math', s.phase === 'over', {
+    kidId: kid.id,
+    levels,
+    score: s.score,
+    correct: s.correct,
+    wrong: s.wrong,
+    bestCombo: s.bestStreak,
+  });
 
   // นับถอยหลัง 3-2-1
   useEffect(() => {
     if (s.phase !== 'countdown') return;
     if (count === 0) {
       sfx.go();
-      dispatch({ type: 'play', level });
+      dispatch({ type: 'play', levels });
       return;
     }
     sfx.tick();
     const t = setTimeout(() => setCount((c) => c - 1), 700);
     return () => clearTimeout(t);
-  }, [s.phase, count, level]);
+  }, [s.phase, count, levels]);
 
   // เวลา 60 วิ — หยุดเดินตอนสลับไปแอปอื่น
   useEffect(() => {
@@ -157,7 +143,7 @@ function Game({ kid, math, back, onAgain }) {
     if (!s.last) return;
     if (s.last.kind === 'ok') {
       sfx.pop(multiplier(s.streak));
-      const t = setTimeout(() => dispatch({ type: 'next', level }), 320);
+      const t = setTimeout(() => dispatch({ type: 'next', levels }), 320);
       setFloaters((f) => [...f.slice(-4), { id: s.last.at, text: `+${s.last.points}`, x: s.last.x, y: s.last.y, kind: 'ok' }]);
       return () => clearTimeout(t);
     }
@@ -168,19 +154,9 @@ function Game({ kid, math, back, onAgain }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.last]);
 
-  // จบรอบ → ส่งผล
-  useEffect(() => {
-    if (s.phase !== 'over' || sent.current) return;
-    sent.current = true;
-    sfx.end();
-    api
-      .post('/api/games/math/rounds', { kidId: kid.id, level, score: s.score, correct: s.correct, wrong: s.wrong, bestCombo: s.bestStreak })
-      .then(setResult)
-      .catch((err) => setResult({ error: err.message }));
-  }, [s.phase, s.score, s.correct, s.wrong, s.bestStreak, kid.id, level]);
-
   const start = () => {
     unlockAudio();
+    setStarsLeft(starsLeftToday(kg));
     setCount(3);
     setLeft(ROUND_MS);
     dispatch({ type: 'countdown' });
@@ -200,32 +176,18 @@ function Game({ kid, math, back, onAgain }) {
 
   return (
     <main className="pad-top pad-bottom mx-auto flex h-dvh max-w-md flex-col overflow-hidden px-4 pb-3 select-none">
-      <header className="flex items-center gap-2 py-2">
-        <Link to={back} className="btn btn-soft size-11 shrink-0 !p-0 text-lg" aria-label="ออกจากเกม">
-          ✕
-        </Link>
-        <span className="flex shrink-0 text-lg" aria-label={`หัวใจ ${s.hearts} ดวง`}>
-          {Array.from({ length: HEARTS }, (_, i) => (
-            <span key={i} className={i < s.hearts ? '' : 'opacity-25 grayscale'}>
-              ❤️
-            </span>
-          ))}
-        </span>
-        <span className={`ml-auto whitespace-nowrap rounded-full px-2.5 py-1 font-bold tabular ${seconds <= 10 && s.phase === 'play' ? 'bg-bad-soft text-bad' : 'bg-sunken'}`}>
-          ⏱ {seconds}
-        </span>
-        <span className="whitespace-nowrap rounded-full bg-sunken px-2.5 py-1 font-bold tabular">⭐ {s.score}</span>
-        <button
-          className="btn btn-soft size-11 shrink-0 !p-0 text-lg"
-          onClick={() => {
-            setMuted(!muted);
-            setMute(!muted);
-          }}
-          aria-label={muted ? 'เปิดเสียง' : 'ปิดเสียง'}
-        >
-          {muted ? '🔇' : '🔊'}
-        </button>
-      </header>
+      <GameHeader
+        hearts={s.hearts}
+        exit={
+          <Link to={back} className="btn btn-soft size-11 shrink-0 !p-0 text-lg" aria-label="ออกจากเกม">
+            ✕
+          </Link>
+        }
+      >
+        <Pill className={seconds <= 10 && s.phase === 'play' ? 'bg-bad-soft text-bad' : 'bg-sunken'}>⏱ {seconds}</Pill>
+        <Pill>🏅 {s.score}</Pill>
+      </GameHeader>
+      {s.phase === 'play' || s.phase === 'over' ? <StarStrip correct={s.correct} g={g} left={starsLeft} /> : null}
 
       <section className="card mt-1 flex min-h-24 flex-col items-center justify-center px-4 py-3 text-center">
         {s.phase === 'play' && s.q ? (
@@ -260,7 +222,7 @@ function Game({ kid, math, back, onAgain }) {
               b={b}
               state={s.popped[b.id]}
               onTap={tap}
-              onEscape={() => dispatch({ type: 'escape', balloon: b, qid: s.q.id, level })}
+              onEscape={() => dispatch({ type: 'escape', balloon: b, qid: s.q.id, levels })}
             />
           ))}
 
@@ -275,7 +237,12 @@ function Game({ kid, math, back, onAgain }) {
           </span>
         ))}
 
-        {s.phase === 'ready' && <ReadyCard kid={kid} math={math} onStart={start} />}
+        {s.phase === 'ready' && (
+          <ReadyCard game="math" g={g} kg={kg} kid={kid} onStart={start} startLabel="เริ่มเลย! 🎈">
+            <p>แตะลูกโป่งที่เป็นคำตอบ ก่อนมันลอยหนีไป! ตอบถูกติดกันได้คอมโบ คะแนนคูณเพิ่ม</p>
+            <p>⏱ 60 วินาที · ❤️ 3 ดวง</p>
+          </ReadyCard>
+        )}
         {s.phase === 'countdown' && (
           <div className="absolute inset-0 grid place-items-center">
             <span key={count} className="animate-pop text-8xl font-bold text-purple-600">
@@ -283,7 +250,19 @@ function Game({ kid, math, back, onAgain }) {
             </span>
           </div>
         )}
-        {s.phase === 'over' && <ResultCard s={s} math={math} result={result} back={back} onAgain={onAgain} />}
+        {s.phase === 'over' && (
+          <ResultCard
+            emoji={s.endReason === 'time' ? '⏰' : '💔'}
+            heading={s.endReason === 'time' ? 'หมดเวลา!' : 'หัวใจหมดแล้ว!'}
+            score={s.score}
+            detail={`ตอบถูก ${s.correct} ข้อ · ถูกติดกันสูงสุด ${s.bestStreak} ข้อ`}
+            result={result}
+            g={g}
+            correct={s.correct}
+            back={back}
+            onAgain={onAgain}
+          />
+        )}
       </div>
     </main>
   );
@@ -324,86 +303,5 @@ function Balloon({ b, state, onTap, onEscape }) {
         )}
       </span>
     </button>
-  );
-}
-
-function Mission({ math }) {
-  if (math.today.rewarded) return <p className="font-semibold text-good">✅ ภารกิจวันนี้สำเร็จแล้ว — เล่นทำสถิติต่อได้</p>;
-  return (
-    <p className="flex flex-wrap items-center justify-center gap-1">
-      🎯 ภารกิจวันนี้: ตอบถูก <b>{math.goal}</b> ข้อในรอบเดียว → <StarCount value={math.stars} size={16} />
-    </p>
-  );
-}
-
-function ReadyCard({ kid, math, onStart }) {
-  const lv = LEVELS[math.level];
-  return (
-    <div className="absolute inset-0 grid place-items-center overflow-y-auto p-4">
-      <div className="card w-full animate-pop px-5 pb-5 pt-5 text-center">
-        <div className="text-6xl animate-float">🎈</div>
-        <p className="mt-2 text-2xl font-bold">ป๊อปลูกโป่ง</p>
-        <p className="mt-1 inline-block rounded-full bg-sunken px-3 py-1 text-sm font-semibold">
-          {lv.emoji} {lv.label}
-        </p>
-        <p className="mt-3 text-[15px] text-mute">แตะลูกโป่งที่เป็นคำตอบ ก่อนมันลอยหนีไป! ตอบถูกติดกันได้คอมโบ คะแนนคูณเพิ่ม</p>
-        <p className="mt-2 text-[15px] text-mute">⏱ 60 วินาที · ❤️ 3 ดวง</p>
-        <div className="mt-3 rounded-2xl bg-sunken px-3 py-2.5 text-[15px]">
-          <Mission math={math} />
-          {math.best && (
-            <p className="mt-1 text-mute">
-              🏆 สถิติของ{kid.name}: {math.best.score} คะแนน
-            </p>
-          )}
-        </div>
-        <button className="btn btn-primary mt-4 w-full text-xl" onClick={onStart} autoFocus>
-          เริ่มเลย! 🎈
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ResultCard({ s, math, result, back, onAgain }) {
-  const reached = s.correct >= math.goal;
-  return (
-    <div className="absolute inset-0 grid place-items-center overflow-y-auto bg-scrim/30 p-4">
-      <div className="card w-full animate-pop px-5 pb-5 pt-5 text-center">
-        <div className="text-6xl">{result?.stars ? '🎉' : s.endReason === 'time' ? '⏰' : '💔'}</div>
-        <p className="mt-1 text-xl font-bold">{s.endReason === 'time' ? 'หมดเวลา!' : 'หัวใจหมดแล้ว!'}</p>
-        <p className="my-1 text-6xl font-bold tabular">{s.score}</p>
-        <p className="text-mute">
-          ตอบถูก {s.correct} ข้อ · ถูกติดกันสูงสุด {s.bestStreak} ข้อ
-        </p>
-        {result?.newBest && <p className="mt-2 text-lg font-bold text-purple-600">🏆 สถิติใหม่!</p>}
-        <div className="mt-3 rounded-2xl bg-sunken px-3 py-2.5 text-[15px]">
-          {!result ? (
-            <p className="text-mute">กำลังส่งผล…</p>
-          ) : result.error ? (
-            <p className="text-bad">ส่งผลไม่สำเร็จ: {result.error}</p>
-          ) : result.stars ? (
-            <p className="flex items-center justify-center gap-1 font-bold text-good">
-              🎯 ภารกิจวันนี้สำเร็จ! ได้ <StarCount value={result.stars} size={18} />
-            </p>
-          ) : math.today.rewarded ? (
-            <p className="text-mute">✅ ภารกิจวันนี้ทำสำเร็จไปแล้ว</p>
-          ) : reached ? (
-            <p className="text-mute">ภารกิจวันนี้ทำสำเร็จไปแล้ว</p>
-          ) : (
-            <p className="text-mute">
-              🎯 ภารกิจวันนี้: ตอบถูก {math.goal} ข้อในรอบเดียว (รอบนี้ {s.correct}) อีกนิดเดียว!
-            </p>
-          )}
-        </div>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <Link to={back} className="btn btn-soft">
-            กลับ
-          </Link>
-          <button className="btn btn-primary whitespace-nowrap text-lg" onClick={onAgain} autoFocus>
-            เล่นอีก
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }

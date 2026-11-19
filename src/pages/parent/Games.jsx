@@ -1,95 +1,138 @@
-// ผู้ปกครอง: แท็บ "เกม" ในหน้าตั้งค่า — ป๊อปลูกโป่ง (ตั้งระดับ/เป้าหมาย/ดาวต่อเด็ก) + ชุดคำศัพท์
+// ผู้ปกครอง: แท็บ "เกม" ในหน้าตั้งค่า — มินิเกมคิดเลขตั้งทีละเด็ก (ดาวสูงสุดต่อวันรวมทุกเกม + แต่ละเกม: เปิด/ปิด, ระดับ, ตอบถูกทุก N ข้อได้ M ดาว)
+// ต่อด้วยชุดคำศัพท์
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api.js';
 import { useStore } from '../../lib/store.jsx';
-import { LEVELS, useGames } from '../../lib/mathgame.js';
+import { GAMES, GAME_KEYS, useGames } from '../../lib/games.js';
 import { Avatar, Segmented, StarCount, Stepper } from '../../components/ui.jsx';
 import { EditorSheet, Row } from '../../components/Editor.jsx';
+import { levelsText } from '../Games.jsx';
 import { VocabTab } from './Vocab.jsx';
 
 export function GamesTab() {
   return (
     <>
-      <MathSection />
+      <MathGames />
       <h3 className="mt-7 mb-2 px-1 font-bold">📚 ทายคำศัพท์</h3>
       <VocabTab />
     </>
   );
 }
 
-function MathSection() {
+function MathGames() {
   const { data } = useStore();
   const games = useGames();
   const [editing, setEditing] = useState(null);
   return (
     <section>
-      <h3 className="mb-1 px-1 font-bold">🎈 ป๊อปลูกโป่ง (เกมคิดเลข)</h3>
-      <p className="mb-3 px-1 text-sm text-mute">รอบละ 60 วินาที แตะลูกโป่งที่เป็นคำตอบ · ภารกิจวันนี้: ตอบถูกถึงเป้าในรอบเดียว ได้ดาววันละครั้ง</p>
+      <h3 className="mb-1 px-1 font-bold">🎮 มินิเกมคิดเลข</h3>
+      <p className="mb-3 px-1 text-sm text-mute">🎈 ป๊อปลูกโป่ง · ⚖️ ตาชั่งตัวเลข · 🏪 ร้านค้า — แตะชื่อเด็กเพื่อเลือกระดับ และตั้งว่าตอบถูกกี่ข้อได้กี่ดาว</p>
       <ul className="card divide-y divide-hair rounded-2xl">
         {data.kids.map((k) => {
-          const m = games.math[k.id];
-          const lv = m && LEVELS[m.level];
+          const kg = games.kids[k.id];
+          const on = kg ? GAME_KEYS.filter((key) => kg[key].enabled) : [];
           return (
             <Row
               key={k.id}
-              onClick={() => m && setEditing(k)}
+              onClick={() => kg && setEditing(k)}
               left={<Avatar kid={k} size={40} />}
               title={k.name}
-              sub={!m ? '…' : m.enabled ? `${lv.emoji} ${lv.label} · ถูก ${m.goal} ข้อ ได้ ${m.stars} ดาว` : 'ปิดเกมนี้อยู่'}
-              right={m?.enabled && m.today.rewarded ? <span className="shrink-0 text-sm font-semibold text-good">✅ วันนี้</span> : null}
+              sub={!kg ? '…' : on.length ? `${on.map((key) => GAMES[key].emoji).join(' ')} · สูงสุด ${kg.dailyStars} ดาว/วัน` : 'ปิดทุกเกม'}
+              right={
+                kg && on.length && kg.dailyStars > 0 ? (
+                  <span className="flex shrink-0 items-center gap-1 text-sm font-semibold text-mute">
+                    วันนี้ <StarCount value={kg.todayStars} size={14} className="text-ink" />/{kg.dailyStars}
+                  </span>
+                ) : null
+              }
             />
           );
         })}
       </ul>
-      <MathSheet kid={editing} math={editing ? games.math[editing.id] : null} onClose={() => setEditing(null)} />
+      <KidGamesSheet kid={editing} kg={editing ? games.kids[editing.id] : null} onClose={() => setEditing(null)} />
     </section>
   );
 }
 
-function MathSheet({ kid, math, onClose }) {
-  const [on, setOn] = useState('on');
-  const [level, setLevel] = useState(2);
-  const [goal, setGoal] = useState(15);
-  const [stars, setStars] = useState(1);
+const pickSettings = (g) => ({ enabled: g.enabled, levels: [...g.levels], every: g.every, stars: g.stars });
+
+function KidGamesSheet({ kid, kg, onClose }) {
+  const [daily, setDaily] = useState(3);
+  const [form, setForm] = useState(null);
+  const [tab, setTab] = useState('math');
   useEffect(() => {
-    if (!kid || !math) return;
-    setOn(math.enabled ? 'on' : 'off');
-    setLevel(math.level);
-    setGoal(math.goal);
-    setStars(math.stars);
+    if (!kid || !kg) return;
+    setDaily(kg.dailyStars);
+    setForm(Object.fromEntries(GAME_KEYS.map((key) => [key, pickSettings(kg[key])])));
+    setTab('math');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kid]);
 
+  const set = (key, patch) => setForm((f) => ({ ...f, [key]: { ...f[key], ...patch } }));
+
   return (
     <EditorSheet
-      open={!!kid}
-      title={`ป๊อปลูกโป่งของ${kid?.name ?? ''}`}
+      open={!!kid && !!form}
+      title={`มินิเกมของ${kid?.name ?? ''}`}
       onClose={onClose}
       onSave={async () => {
-        await api.put(`/api/parent/games/math/${kid.id}`, { enabled: on === 'on', level, goal, stars });
+        await api.put(`/api/parent/games/${kid.id}`, { dailyStars: daily, games: form });
         toast.success('บันทึกแล้ว');
       }}
     >
-      <Segmented
-        value={on}
-        onChange={setOn}
-        options={[
-          { value: 'on', label: 'เปิดเกม' },
-          { value: 'off', label: 'ปิดเกม' },
-        ]}
-      />
-      <fieldset disabled={on === 'off'} className={`space-y-4 ${on === 'off' ? 'opacity-50' : ''}`}>
+      <div>
+        <span className="label">ดาวจากมินิเกมสูงสุดต่อวัน (รวมทุกเกม)</span>
+        <Stepper value={daily} onChange={setDaily} min={0} max={30} />
+        <p className="mt-1.5 text-sm text-mute">
+          ครบแล้วยังเล่นต่อได้แต่ไม่ได้ดาวเพิ่ม · ตั้ง 0 = เล่นได้แต่ไม่ได้ดาว{kg?.todayStars ? ` · วันนี้ได้ไปแล้ว ${kg.todayStars} ดวง` : ''}
+        </p>
+      </div>
+
+      <Segmented value={tab} onChange={setTab} options={GAME_KEYS.map((key) => ({ value: key, label: `${GAMES[key].emoji} ${GAMES[key].short}` }))} />
+
+      {form && kg && <GameSettings key={tab} game={tab} value={form[tab]} stats={kg[tab]} onChange={(patch) => set(tab, patch)} />}
+    </EditorSheet>
+  );
+}
+
+function GameSettings({ game, value, stats, onChange }) {
+  const info = GAMES[game];
+  const off = !value.enabled;
+  const toggleLevel = (l) => {
+    const has = value.levels.includes(l);
+    if (has && value.levels.length === 1) return; // ต้องเหลืออย่างน้อย 1 ระดับ
+    onChange({ levels: has ? value.levels.filter((x) => x !== l) : [...value.levels, l].sort((a, b) => a - b) });
+  };
+  const sample = value.every * 2 + Math.max(1, Math.floor(value.every / 2));
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="mb-2 text-lg font-bold">
+          {info.emoji} {info.title}
+        </p>
+        <Segmented
+          value={value.enabled ? 'on' : 'off'}
+          onChange={(v) => onChange({ enabled: v === 'on' })}
+          options={[
+            { value: 'on', label: 'เปิดเกม' },
+            { value: 'off', label: 'ปิดเกม' },
+          ]}
+        />
+      </div>
+      <fieldset disabled={off} className={`space-y-4 ${off ? 'opacity-50' : ''}`}>
         <div>
-          <span className="label">ระดับ</span>
+          <span className="label">ระดับ (เลือกได้หลายระดับ โจทย์จะคละกัน)</span>
           <div className="space-y-1.5">
-            {Object.entries(LEVELS).map(([value, lv]) => {
-              const selected = level === Number(value);
+            {Object.entries(info.levels).map(([key, lv]) => {
+              const l = Number(key);
+              const selected = value.levels.includes(l);
               return (
                 <button
                   type="button"
-                  key={value}
-                  onClick={() => setLevel(Number(value))}
+                  key={key}
+                  onClick={() => toggleLevel(l)}
                   aria-pressed={selected}
                   className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left ${selected ? 'bg-purple-300/40 ring-2 ring-purple-500' : 'bg-sunken'}`}
                 >
@@ -98,32 +141,35 @@ function MathSheet({ kid, math, onClose }) {
                     <span className="block font-semibold">{lv.label}</span>
                     <span className="block text-[13px] text-mute">เช่น {lv.example}</span>
                   </span>
+                  <span
+                    className={`grid size-6 shrink-0 place-items-center rounded-full border-2 text-sm font-bold ${selected ? 'border-purple-600 bg-purple-600 text-white' : 'border-lilac bg-card'}`}
+                    aria-hidden="true"
+                  >
+                    {selected ? '✓' : ''}
+                  </span>
                 </button>
               );
             })}
           </div>
         </div>
         <div>
-          <span className="label">ภารกิจวันนี้: ตอบถูกกี่ข้อในรอบเดียว</span>
-          <Stepper value={goal} onChange={setGoal} min={5} max={60} step={5} />
-          <p className="mt-1.5 text-sm text-mute">รอบละ 60 วินาที เล่นคล่องๆ ตอบได้ราว 15–25 ข้อ</p>
+          <span className="label">ตอบถูกทุกกี่ข้อ (นับในรอบเดียว)</span>
+          <Stepper value={value.every} onChange={(every) => onChange({ every })} min={1} max={50} />
         </div>
         <div>
-          <span className="label">ภารกิจสำเร็จได้กี่ดาว (วันละครั้ง)</span>
-          <Stepper value={stars} onChange={setStars} min={1} max={10} />
+          <span className="label">ได้กี่ดาว</span>
+          <Stepper value={value.stars} onChange={(stars) => onChange({ stars })} min={1} max={10} />
+          <p className="mt-1.5 text-sm text-mute">
+            เช่น รอบเดียวถูก {sample} ข้อ → ได้ {Math.floor(sample / value.every) * value.stars} ดาว · {info.hint}
+          </p>
         </div>
       </fieldset>
-      {math && (
-        <p className="flex flex-wrap items-center gap-1 rounded-2xl bg-sunken px-3 py-2.5 text-sm text-mute">
-          {math.best ? `🏆 สถิติ ${math.best.score} คะแนน (ถูก ${math.best.correct} ข้อ)` : 'ยังไม่เคยเล่น'}
-          {' · '}วันนี้เล่น {math.today.rounds} รอบ{math.today.rounds > 0 && ` ถูกมากสุด ${math.today.bestCorrect} ข้อ`}
-          {math.today.rewarded && (
-            <>
-              {' · '}✅ ได้ <StarCount value={math.stars} size={13} /> แล้ว
-            </>
-          )}
-        </p>
-      )}
-    </EditorSheet>
+      <p className="rounded-2xl bg-sunken px-3 py-2.5 text-sm text-mute">
+        {stats.best ? `🏆 สถิติ ${stats.best.score} คะแนน (ถูก ${stats.best.correct} ข้อ)` : 'ยังไม่เคยเล่น'}
+        {' · '}วันนี้เล่น {stats.today.rounds} รอบ{stats.today.rounds > 0 && ` ถูกมากสุด ${stats.today.bestCorrect} ข้อ`}
+        {stats.today.stars > 0 && ` · ได้ ${stats.today.stars} ดาว`}
+        {stats.enabled && <span className="mt-0.5 block">ตอนนี้: {levelsText(game, stats.levels)}</span>}
+      </p>
+    </div>
   );
 }
