@@ -488,6 +488,7 @@
   --color-on-accent: #111111;
   --color-on-primary: #111111;
   --color-night: #333333;
+  --color-gold-200: #2e2611; /* ป้ายพื้นทอง (ดาวมินิเกม, ป้ายราคา) — ตัวอักษรสว่างบนพื้นทองเข้ม */
 }
 [data-theme="minimal"] body {
   background-image: none;

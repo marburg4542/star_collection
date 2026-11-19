@@ -272,7 +272,7 @@ function Tray({ order, tray, total, locked, onRemove, onClear }) {
           groups.map(([v, n]) => (
             <button key={v} className="relative" onClick={() => onRemove(v)} disabled={locked} aria-label={`เอา ${v} บาท ออก 1 ชิ้น (มี ${n})`}>
               <Money value={v} small />
-              {n > 1 && <span className="absolute -right-1.5 -top-1.5 rounded-full bg-ink px-1.5 text-xs font-bold text-white tabular">×{n}</span>}
+              {n > 1 && <span className="absolute -right-1.5 -top-1.5 rounded-full bg-ink px-1.5 text-xs font-bold text-paper tabular">×{n}</span>}
             </button>
           ))
         )}

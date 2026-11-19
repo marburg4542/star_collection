@@ -146,7 +146,7 @@ export function createApp(db, { appUrl, distDir, mediaDir } = {}) {
     return Number(lastInsertRowid);
   }
   const vocab = createVocab({ db, push, changed, mustKid, device, awardStars, mediaDir });
-  const games = createGames({ db, push, changed, mustKid, device, awardStars });
+  const games = createGames({ db, push, changed, mustKid, device, awardStars, voidTransaction });
 
   function state() {
     return {

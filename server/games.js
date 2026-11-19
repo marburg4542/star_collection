@@ -40,7 +40,7 @@ function gameOf(key) {
   return game;
 }
 
-export function createGames({ db, push, changed, mustKid, device, awardStars }) {
+export function createGames({ db, push, changed, mustKid, device, awardStars, voidTransaction }) {
   const s = {
     settings: db.prepare('SELECT * FROM game_settings WHERE kid_id = ?'),
     saveSettings: db.prepare(`
@@ -56,6 +56,10 @@ export function createGames({ db, push, changed, mustKid, device, awardStars }) 
     todayStars: db.prepare(`
       SELECT r.game, SUM(t.amount) AS stars FROM game_rounds r JOIN transactions t ON t.id = r.tx_id
       WHERE r.kid_id = ? AND r.day = ? AND t.voided_at IS NULL GROUP BY r.game`),
+    todayTxs: db.prepare(`
+      SELECT t.* FROM game_rounds r JOIN transactions t ON t.id = r.tx_id
+      WHERE r.kid_id = ? AND r.day = ? AND t.voided_at IS NULL`),
+    deleteToday: db.prepare('DELETE FROM game_rounds WHERE kid_id = ? AND day = ?'),
     insertRound: db.prepare(`
       INSERT INTO game_rounds (kid_id, game, day, levels, score, correct, wrong, best_combo, tx_id)
       VALUES (@kidId, @game, @day, @levels, @score, @correct, @wrong, @bestCombo, @txId)`),
@@ -170,6 +174,20 @@ export function createGames({ db, push, changed, mustKid, device, awardStars }) 
       })();
       changed('games');
       res.json({ ok: true });
+    });
+
+    // รีเซ็ตมินิเกมคิดเลขวันนี้ของเด็กคนนี้ (ไว้ทดสอบระบบ): ยกเลิกดาวที่ได้จากเกมวันนี้ (ขีดฆ่าในประวัติ) + ลบรอบที่เล่นวันนี้
+    // → โควตาดาววันนี้กลับมาเต็ม · วันก่อนๆ และเกมคำศัพท์ไม่ถูกแตะ
+    P.post('/games/:kidId/reset-today', (req, res) => {
+      const kid = mustKid(req.params.kidId);
+      const day = today();
+      const txs = s.todayTxs.all(kid.id, day);
+      const rounds = db.transaction(() => {
+        for (const tx of txs) voidTransaction(tx);
+        return s.deleteToday.run(kid.id, day).changes;
+      })();
+      changed('games');
+      res.json({ rounds, stars: txs.reduce((sum, t) => sum + t.amount, 0) });
     });
   }
 

@@ -347,6 +347,22 @@ test('มินิเกม: ตั้งค่าต่อเด็กต่อ
     assert.equal((await round('math', { correct: 1, score: 10 })).status, 400);
     assert.equal((await mom.put(url, { dailyStars: 0 })).status, 200);
     assert.equal((await round('scale', { correct: 20, score: 100 })).body.stars, 0);
+
+    // รีเซ็ตวันนี้ (ไว้ทดสอบระบบ): ยกเลิกดาวจากเกมวันนี้ที่ยังไม่ถูกยกเลิก + ลบรอบวันนี้ทั้ง 3 เกม → โควตากลับมาเต็ม
+    const reset = `/api/parent/games/${kidA}/reset-today`;
+    assert.equal((await kidPhone.post(reset)).status, 401, 'เด็กรีเซ็ตเองไม่ได้');
+    const beforeReset = (await mom.get('/api/state')).body.kids.find((k) => k.id === kidA).balance;
+    r = await mom.post(reset);
+    assert.deepEqual(r.body, { rounds: 6, stars: 3 }, 'ดาว 4 ดวงที่ยกเลิกไปก่อนแล้วไม่นับซ้ำ');
+    assert.equal((await mom.get('/api/state')).body.kids.find((k) => k.id === kidA).balance, beforeReset - 3);
+    const games = (await mom.get(`/api/history?kid=${kidA}`)).body.items.filter((t) => ['🎈', '⚖️', '🏪'].includes(t.emoji));
+    assert.deepEqual(games.map((t) => [t.emoji, t.amount, !!t.voidedAt]), [['🏪', 2, true], ['⚖️', 1, true], ['🎈', 4, true]], 'ยังอยู่ในประวัติ แต่ถูกยกเลิกทั้งหมด');
+    g = await gamesOf();
+    assert.equal(g.todayStars, 0);
+    assert.deepEqual(g.shop.today, { rounds: 0, bestCorrect: 0, stars: 0 });
+    assert.equal(g.scale.best, null);
+    assert.deepEqual((await mom.post(reset)).body, { rounds: 0, stars: 0 }, 'กดซ้ำได้ ไม่มีอะไรให้ล้าง');
+
     assert.equal((await mom.put(url, { dailyStars: 3, games: { math: rule({ levels: [2], every: 10, stars: 1 }) } })).status, 200);
   } finally {
     app.locals.push.notify = realNotify;

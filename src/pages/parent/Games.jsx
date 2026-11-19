@@ -7,6 +7,7 @@ import { useStore } from '../../lib/store.jsx';
 import { GAMES, GAME_KEYS, useGames } from '../../lib/games.js';
 import { Avatar, Segmented, StarCount, Stepper } from '../../components/ui.jsx';
 import { EditorSheet, Row } from '../../components/Editor.jsx';
+import { Confirm } from '../../components/Feedback.jsx';
 import { levelsText } from '../Games.jsx';
 import { VocabTab } from './Vocab.jsx';
 
@@ -24,6 +25,9 @@ function MathGames() {
   const { data } = useStore();
   const games = useGames();
   const [editing, setEditing] = useState(null);
+  const [resetting, setResetting] = useState(null);
+  const rk = resetting ? games.kids[resetting.id] : null;
+  const rounds = rk ? roundsToday(rk) : 0;
   return (
     <section>
       <h3 className="mb-1 px-1 font-bold">🎮 มินิเกมคิดเลข</h3>
@@ -50,14 +54,40 @@ function MathGames() {
           );
         })}
       </ul>
-      <KidGamesSheet kid={editing} kg={editing ? games.kids[editing.id] : null} onClose={() => setEditing(null)} />
+      <KidGamesSheet
+        kid={editing}
+        kg={editing ? games.kids[editing.id] : null}
+        onClose={() => setEditing(null)}
+        onReset={() => {
+          setResetting(editing);
+          setEditing(null);
+        }}
+      />
+      <Confirm
+        open={!!resetting}
+        title={`รีเซ็ตมินิเกมวันนี้ของ${resetting?.name ?? ''}?`}
+        confirmLabel="รีเซ็ต"
+        danger
+        onClose={() => setResetting(null)}
+        onConfirm={async () => {
+          const r = await api.post(`/api/parent/games/${resetting.id}/reset-today`);
+          toast.success(`รีเซ็ตแล้ว · ล้าง ${r.rounds} รอบ${r.stars ? ` ยกเลิก ${r.stars} ดาว` : ''}`);
+        }}
+      >
+        <p>
+          ล้างรอบที่เล่นวันนี้ของทั้ง 3 เกม ({rounds} รอบ)
+          {rk?.todayStars ? ` และยกเลิกดาวที่ได้จากเกมวันนี้ ${rk.todayStars} ดวง — ยอดดาวลดลง ${rk.todayStars} ดวง (ยังเห็นในประวัติแบบขีดฆ่า)` : ''}
+        </p>
+        <p className="mt-2">โควตาดาววันนี้จะกลับมาเต็ม · วันก่อนๆ และเกมทายคำศัพท์ไม่ถูกแตะ</p>
+      </Confirm>
     </section>
   );
 }
 
 const pickSettings = (g) => ({ enabled: g.enabled, levels: [...g.levels], every: g.every, stars: g.stars });
+const roundsToday = (kg) => GAME_KEYS.reduce((sum, key) => sum + kg[key].today.rounds, 0);
 
-function KidGamesSheet({ kid, kg, onClose }) {
+function KidGamesSheet({ kid, kg, onClose, onReset }) {
   const [daily, setDaily] = useState(3);
   const [form, setForm] = useState(null);
   const [tab, setTab] = useState('math');
@@ -92,6 +122,15 @@ function KidGamesSheet({ kid, kg, onClose }) {
       <Segmented value={tab} onChange={setTab} options={GAME_KEYS.map((key) => ({ value: key, label: `${GAMES[key].emoji} ${GAMES[key].short}` }))} />
 
       {form && kg && <GameSettings key={tab} game={tab} value={form[tab]} stats={kg[tab]} onChange={(patch) => set(tab, patch)} />}
+
+      {kg && roundsToday(kg) > 0 && (
+        <div className="rounded-2xl border-2 border-dashed border-lilac px-3 pb-3 pt-2.5">
+          <p className="text-sm text-mute">🧪 ใช้ตอนทดสอบระบบ: ล้างรอบที่เล่นวันนี้ทั้ง 3 เกม และยกเลิกดาวจากเกมวันนี้</p>
+          <button type="button" className="btn btn-ghost mt-1 w-full text-bad" onClick={onReset}>
+            🔄 รีเซ็ตมินิเกมวันนี้ ({roundsToday(kg)} รอบ{kg.todayStars ? ` · ${kg.todayStars} ดาว` : ''})
+          </button>
+        </div>
+      )}
     </EditorSheet>
   );
 }
@@ -142,7 +181,7 @@ function GameSettings({ game, value, stats, onChange }) {
                     <span className="block text-[13px] text-mute">เช่น {lv.example}</span>
                   </span>
                   <span
-                    className={`grid size-6 shrink-0 place-items-center rounded-full border-2 text-sm font-bold ${selected ? 'border-purple-600 bg-purple-600 text-white' : 'border-lilac bg-card'}`}
+                    className={`grid size-6 shrink-0 place-items-center rounded-full border-2 text-sm font-bold ${selected ? 'border-purple-600 bg-purple-600 text-on-primary' : 'border-lilac bg-card'}`}
                     aria-hidden="true"
                   >
                     {selected ? '✓' : ''}
